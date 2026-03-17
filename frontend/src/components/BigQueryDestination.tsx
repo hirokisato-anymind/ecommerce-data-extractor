@@ -56,7 +56,7 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
 
   const [customLocation, setCustomLocation] = useState(false);
 
-  const needsKeyColumns = config.transfer_mode === "upsert" || config.transfer_mode === "delete_in_advance";
+  const needsKeyColumns = config.transfer_mode === "append" || config.transfer_mode === "upsert" || config.transfer_mode === "delete_in_advance";
 
   // Check if current location is a preset or custom
   const isPresetLocation = BIGQUERY_LOCATIONS.some((l) => l.value === config.location);
@@ -472,7 +472,7 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
             <button
               key={mode.value}
               type="button"
-              onClick={() => onChange({ ...config, transfer_mode: mode.value, key_columns: mode.value === "upsert" || mode.value === "delete_in_advance" ? config.key_columns : [] })}
+              onClick={() => onChange({ ...config, transfer_mode: mode.value, key_columns: mode.value === "append" || mode.value === "upsert" || mode.value === "delete_in_advance" ? config.key_columns : [] })}
               className={`pill-button ${config.transfer_mode === mode.value ? "active" : ""}`}
             >
               {mode.label}
@@ -484,11 +484,15 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
         </p>
       </div>
 
-      {/* Key Columns (for UPSERT / DELETE_IN_ADVANCE) */}
+      {/* Key Columns (for APPEND / UPSERT / DELETE_IN_ADVANCE) */}
       {needsKeyColumns && (
         <div className="space-y-2">
           <Label className="text-sm font-medium text-slate-700">キーカラム</Label>
-          <p className="text-xs text-muted-foreground">重複判定やデータ更新に使用するカラムを選択してください</p>
+          <p className="text-xs text-muted-foreground">
+            {config.transfer_mode === "append"
+              ? "重複チェック用のキーカラムを選択してください（未選択の場合は重複チェックなしで追加）"
+              : "重複判定やデータ更新に使用するカラムを選択してください"}
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {availableColumns.length > 0 ? (
               availableColumns.map((col) => (
