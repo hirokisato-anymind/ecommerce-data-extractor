@@ -9,6 +9,40 @@ from google.cloud import bigquery
 
 logger = logging.getLogger("ecommerce_data_extractor.bigquery")
 
+# +0900 -> +09:00 のような修正が必要なタイムゾーンオフセットパターン
+_TZ_OFFSET_RE = re.compile(r"([+-]\d{2})(\d{2})$")
+
+
+def _normalize_timestamp(value: str) -> str:
+    """BQが受け付けるタイムスタンプ形式に正規化する。
+
+    例: 2026-03-17T23:06:39+0900 -> 2026-03-17T23:06:39+09:00
+    """
+    m = _TZ_OFFSET_RE.search(value)
+    if m:
+        value = value[: m.start()] + m.group(1) + ":" + m.group(2)
+    return value
+
+
+def _normalize_rows(rows: list[dict], schema: list[bigquery.SchemaField]) -> list[dict]:
+    """スキーマのTIMESTAMP/DATETIME型カラムの値をBQ互換形式に変換する。"""
+    ts_fields = {
+        f.name for f in schema
+        if f.field_type in ("TIMESTAMP", "DATETIME", "DATE")
+    }
+    if not ts_fields:
+        return rows
+    normalized = []
+    for row in rows:
+        new_row = {}
+        for k, v in row.items():
+            if k in ts_fields and isinstance(v, str) and v:
+                new_row[k] = _normalize_timestamp(v)
+            else:
+                new_row[k] = v
+        normalized.append(new_row)
+    return normalized
+
 
 class TransferMode(str, Enum):
     APPEND = "append"
@@ -148,6 +182,10 @@ async def write_to_bigquery(
     table_ref = f"{project_id}.{dataset_id}.{table_id}"
 
     table = _ensure_table_exists(client, table_ref, rows, location=location)
+
+    # タイムスタンプ文字列をBQ互換形式に正規化 (+0900 -> +09:00 等)
+    if table.schema:
+        rows = _normalize_rows(rows, table.schema)
 
     def _make_load_config(write_disposition) -> bigquery.LoadJobConfig:
         """既存テーブルのスキーマがあればそれを使い、なければautodetectにする。"""
