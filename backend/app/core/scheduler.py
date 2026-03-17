@@ -1,5 +1,6 @@
 """スケジュール抽出ジョブのAPScheduler統合。"""
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -143,6 +144,7 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
             if not next_cursor or not page_items:
                 break
             current_cursor = next_cursor
+            await asyncio.sleep(1.0)  # Inter-page delay to avoid rate limits
 
         items = all_items[:limit]
 

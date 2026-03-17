@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from fastapi import APIRouter, HTTPException, Query
@@ -66,6 +67,7 @@ async def extract_data(
                 if not next_cursor or not result.get("items"):
                     break
                 current_cursor = next_cursor
+                await asyncio.sleep(1.0)  # Inter-page delay to avoid rate limits
 
             result_meta["items"] = all_items[:limit]
             result_meta["next_cursor"] = None if len(all_items) <= limit else result_meta.get("next_cursor")

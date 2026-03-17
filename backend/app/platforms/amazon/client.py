@@ -6,6 +6,7 @@ from typing import Any
 import httpx
 
 from app.config import settings
+from app.core.rate_limiter import amazon_limiter, retry_on_429
 from app.core.read_only import ReadOnlyHttpClient
 from app.platforms.base import PlatformClient
 
@@ -370,11 +371,16 @@ class AmazonClient(PlatformClient):
     async def _sp_api_get(
         self, path: str, params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        await amazon_limiter.acquire()
         url = f"{SP_API_BASE_URL}{path}"
         headers = await self._get_headers()
-        response = await self._http.get(url, params=params, headers=headers)
-        response.raise_for_status()
-        return response.json()
+
+        async def _do_get():
+            response = await self._http.get(url, params=params, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+        return await retry_on_429(_do_get)
 
     # -- PlatformClient interface ---------------------------------------------
 

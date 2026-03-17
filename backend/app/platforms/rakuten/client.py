@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from app.config import settings
+from app.core.rate_limiter import rakuten_limiter, retry_on_429
 from app.core.read_only import ReadOnlyHttpClient
 from app.platforms.base import PlatformClient
 
@@ -262,13 +263,18 @@ class RakutenClient(PlatformClient):
             },
         }
 
-        search_resp = await self._http.post(
-            RMS_ORDER_SEARCH_URL,
-            json=search_body,
-            headers=self._rms_headers_post(),
-        )
-        search_resp.raise_for_status()
-        search_data = search_resp.json()
+        await rakuten_limiter.acquire()
+
+        async def _do_search():
+            resp = await self._http.post(
+                RMS_ORDER_SEARCH_URL,
+                json=search_body,
+                headers=self._rms_headers_post(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        search_data = await retry_on_429(_do_search)
 
         order_numbers = search_data.get("orderNumberList", [])
         pagination = search_data.get("PaginationResponseModel", {})
@@ -289,13 +295,18 @@ class RakutenClient(PlatformClient):
         all_get_data: list[dict] = []
         for i in range(0, len(order_numbers), 100):
             batch = order_numbers[i : i + 100]
-            get_resp = await self._http.post(
-                RMS_ORDER_GET_URL,
-                json={"orderNumberList": batch, "version": 7},
-                headers=self._rms_headers_post(),
-            )
-            get_resp.raise_for_status()
-            get_data = get_resp.json()
+            await rakuten_limiter.acquire()
+
+            async def _do_get_order(b=batch):
+                resp = await self._http.post(
+                    RMS_ORDER_GET_URL,
+                    json={"orderNumberList": b, "version": 7},
+                    headers=self._rms_headers_post(),
+                )
+                resp.raise_for_status()
+                return resp.json()
+
+            get_data = await retry_on_429(_do_get_order)
             all_get_data.extend(get_data.get("OrderModelList", []))
 
         raw_orders = all_get_data
@@ -431,11 +442,16 @@ class RakutenClient(PlatformClient):
         else:
             params["offset"] = 0
 
-        response = await self._http.get(
-            RMS_ITEMS_SEARCH_URL, params=params, headers=self._rms_headers_get()
-        )
-        response.raise_for_status()
-        data = response.json()
+        await rakuten_limiter.acquire()
+
+        async def _do_items_search():
+            resp = await self._http.get(
+                RMS_ITEMS_SEARCH_URL, params=params, headers=self._rms_headers_get()
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        data = await retry_on_429(_do_items_search)
 
         raw_results = data.get("results", [])
         total = data.get("numFound")
@@ -496,11 +512,16 @@ class RakutenClient(PlatformClient):
         else:
             items_params["offset"] = 0
 
-        items_resp = await self._http.get(
-            RMS_ITEMS_SEARCH_URL, params=items_params, headers=self._rms_headers_get()
-        )
-        items_resp.raise_for_status()
-        items_data = items_resp.json()
+        await rakuten_limiter.acquire()
+
+        async def _do_inv_items():
+            resp = await self._http.get(
+                RMS_ITEMS_SEARCH_URL, params=items_params, headers=self._rms_headers_get()
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        items_data = await retry_on_429(_do_inv_items)
 
         raw_results = items_data.get("results", [])
         next_cursor_mark = items_data.get("nextCursorMark")
@@ -533,13 +554,18 @@ class RakutenClient(PlatformClient):
                     "variantId": "",
                 })
 
-        inv_resp = await self._http.post(
-            RMS_INVENTORY_BULK_GET_URL,
-            json={"inventories": inventory_queries},
-            headers=self._rms_headers_post(),
-        )
-        inv_resp.raise_for_status()
-        inv_data = inv_resp.json()
+        await rakuten_limiter.acquire()
+
+        async def _do_inv_bulk():
+            resp = await self._http.post(
+                RMS_INVENTORY_BULK_GET_URL,
+                json={"inventories": inventory_queries},
+                headers=self._rms_headers_post(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        inv_data = await retry_on_429(_do_inv_bulk)
 
         raw_inventories = inv_data.get("inventories", [])
         available_fields = {f["name"] for f in SCHEMAS["rms_inventory"]["fields"]}

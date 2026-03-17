@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from app.config import settings
+from app.core.rate_limiter import shopify_limiter, retry_on_429
 from app.core.read_only import ReadOnlyHttpClient
 from app.platforms.base import PlatformClient
 
@@ -367,12 +368,18 @@ class ShopifyClient(PlatformClient):
             "Content-Type": "application/json",
         }
 
-        response = await self._http.post_graphql(
-            url,
-            json={"query": query, "variables": variables},
-            headers=headers,
-        )
-        response.raise_for_status()
+        await shopify_limiter.acquire()
+
+        async def _do_query():
+            resp = await self._http.post_graphql(
+                url,
+                json={"query": query, "variables": variables},
+                headers=headers,
+            )
+            resp.raise_for_status()
+            return resp
+
+        response = await retry_on_429(_do_query)
 
         body = response.json()
 

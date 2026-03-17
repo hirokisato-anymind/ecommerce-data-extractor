@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from app.config import settings
+from app.core.rate_limiter import yahoo_limiter, retry_on_429
 from app.core.read_only import ReadOnlyHttpClient
 from app.platforms.base import PlatformClient
 
@@ -260,8 +261,14 @@ class YahooClient(PlatformClient):
         if end_date and endpoint_id == "seller_orders":
             params["EndDate"] = end_date
 
-        response = await self._http.get(url, params=params, headers=headers)
-        response.raise_for_status()
+        await yahoo_limiter.acquire()
+
+        async def _do_get():
+            resp = await self._http.get(url, params=params, headers=headers)
+            resp.raise_for_status()
+            return resp
+
+        response = await retry_on_429(_do_get)
 
         body = response.json()
 

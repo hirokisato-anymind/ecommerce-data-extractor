@@ -1,5 +1,10 @@
 import asyncio
+import logging
 import time
+
+import httpx
+
+logger = logging.getLogger("ecommerce_data_extractor.rate_limiter")
 
 
 class RateLimiter:
@@ -31,8 +36,51 @@ class RateLimiter:
             await asyncio.sleep(wait_time)
 
 
+async def retry_on_429(
+    func,
+    *args,
+    max_retries: int = 3,
+    base_delay: float = 2.0,
+    **kwargs,
+):
+    """Call an async function with exponential backoff retry on 429/throttle errors.
+
+    Catches httpx.HTTPStatusError with status 429 and retries up to max_retries
+    times with exponential backoff (base_delay * 2^attempt).
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            return await func(*args, **kwargs)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 and attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "Rate limited (429), retrying in %.1fs (attempt %d/%d)",
+                    delay, attempt + 1, max_retries,
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
+        except Exception as e:
+            # Some APIs return throttling as a different error
+            err_str = str(e).lower()
+            if ("throttl" in err_str or "too many" in err_str) and attempt < max_retries:
+                delay = base_delay * (2 ** attempt)
+                logger.warning(
+                    "Throttled, retrying in %.1fs (attempt %d/%d): %s",
+                    delay, attempt + 1, max_retries, e,
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
+
+
 # Pre-configured rate limiters per platform
+# Shopify: 2 req/sec with burst of 4 (matches official limit)
 shopify_limiter = RateLimiter(tokens_per_second=2, max_tokens=4)
+# Rakuten: 1 req/sec, no burst (conservative for RMS API)
 rakuten_limiter = RateLimiter(tokens_per_second=1, max_tokens=1)
-amazon_limiter = RateLimiter(tokens_per_second=5, max_tokens=10)
+# Amazon SP-API: ~15 req/min = 0.25 req/sec, small burst of 2
+amazon_limiter = RateLimiter(tokens_per_second=0.25, max_tokens=2)
+# Yahoo: 1 req/sec, no burst
 yahoo_limiter = RateLimiter(tokens_per_second=1, max_tokens=1)
