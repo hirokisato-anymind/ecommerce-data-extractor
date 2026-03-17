@@ -242,10 +242,10 @@ export function JobList({ onEdit }: JobListProps) {
                     </span>
                     {job.last_run_status && (
                       <Badge
-                        variant={job.last_run_status === "success" ? "default" : "destructive"}
+                        variant={job.last_run_status.startsWith("成功") || job.last_run_status === "success" ? "default" : "destructive"}
                         className="text-[10px] px-1.5 py-0"
                       >
-                        {job.last_run_status === "success" ? "成功" : "失敗"}
+                        {job.last_run_status.startsWith("成功") || job.last_run_status === "success" ? "成功" : "失敗"}
                       </Badge>
                     )}
                   </div>

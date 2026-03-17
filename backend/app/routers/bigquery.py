@@ -14,6 +14,16 @@ logger = logging.getLogger("ecommerce_data_extractor.bigquery_router")
 
 router = APIRouter(prefix="/bigquery", tags=["bigquery"])
 
+
+def _get_base_url(request: Request) -> str:
+    """リクエストからベースURLを取得する。Cloud Runではhttpsに変換。"""
+    base = str(request.base_url).rstrip("/")
+    # Cloud Run等のリバースプロキシ環境ではX-Forwarded-Protoを参照
+    proto = request.headers.get("x-forwarded-proto", "")
+    if proto == "https" and base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    return base
+
 # Google OAuth設定
 TOKENS_FILE = Path(__file__).resolve().parent.parent.parent / "google_tokens.json"
 OAUTH_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "google_oauth_config.json"
@@ -161,7 +171,7 @@ async def get_auth_url(request: Request) -> dict:
     from urllib.parse import urlencode
 
     # コールバックURLを動的に構築
-    base_url = str(request.base_url).rstrip("/")
+    base_url = _get_base_url(request)
     redirect_uri = f"{base_url}/api/bigquery/callback"
 
     params = {
@@ -191,7 +201,7 @@ async def oauth_callback(request: Request, code: str | None = None, error: str |
         raise HTTPException(status_code=400, detail="認証コードがありません")
 
     oauth_config = _get_google_oauth_config()
-    base_url = str(request.base_url).rstrip("/")
+    base_url = _get_base_url(request)
     redirect_uri = f"{base_url}/api/bigquery/callback"
 
     # 認証コードをトークンに交換
