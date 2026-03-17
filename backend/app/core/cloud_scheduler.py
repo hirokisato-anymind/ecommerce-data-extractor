@@ -82,10 +82,11 @@ def create_cloud_scheduler_job(schedule_id: str, schedule_config, enabled: bool)
 
 
 def update_cloud_scheduler_job(schedule_id: str, schedule_config, enabled: bool) -> None:
-    """Cloud Scheduler の既存ジョブを更新する。"""
+    """Cloud Scheduler の既存ジョブを更新する。存在しなければ作成する。"""
     if not is_cloud_mode():
         return
 
+    from google.api_core.exceptions import NotFound
     from google.cloud import scheduler_v1
     from google.protobuf import field_mask_pb2
 
@@ -108,15 +109,20 @@ def update_cloud_scheduler_job(schedule_id: str, schedule_config, enabled: bool)
         attempt_deadline=duration_pb2.Duration(seconds=1800),
     )
 
-    client.update_job(
-        request=scheduler_v1.UpdateJobRequest(
-            job=job,
-            update_mask=field_mask_pb2.FieldMask(
-                paths=["schedule", "time_zone", "http_target", "state", "attempt_deadline"],
-            ),
+    try:
+        client.update_job(
+            request=scheduler_v1.UpdateJobRequest(
+                job=job,
+                update_mask=field_mask_pb2.FieldMask(
+                    paths=["schedule", "time_zone", "http_target", "state", "attempt_deadline"],
+                ),
+            )
         )
-    )
-    logger.info("Cloud Scheduler ジョブ更新: ede-%s (cron=%s, enabled=%s)", schedule_id, cron, enabled)
+        logger.info("Cloud Scheduler ジョブ更新: ede-%s (cron=%s, enabled=%s)", schedule_id, cron, enabled)
+    except NotFound:
+        # ジョブが存在しない場合は新規作成
+        logger.info("Cloud Scheduler ジョブが見つからないため作成します: ede-%s", schedule_id)
+        create_cloud_scheduler_job(schedule_id, schedule_config, enabled)
 
 
 def delete_cloud_scheduler_job(schedule_id: str) -> None:
