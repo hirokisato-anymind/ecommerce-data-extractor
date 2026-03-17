@@ -147,35 +147,37 @@ async def write_to_bigquery(
     client = _get_client(project_id, location=location)
     table_ref = f"{project_id}.{dataset_id}.{table_id}"
 
-    _ensure_table_exists(client, table_ref, rows, location=location)
+    table = _ensure_table_exists(client, table_ref, rows, location=location)
 
-    if mode == TransferMode.REPLACE:
-        # WRITE_TRUNCATE: テーブルを上書き
-        job_config = bigquery.LoadJobConfig(
+    def _make_load_config(write_disposition) -> bigquery.LoadJobConfig:
+        """既存テーブルのスキーマがあればそれを使い、なければautodetectにする。"""
+        if table.schema:
+            return bigquery.LoadJobConfig(
+                schema=table.schema,
+                write_disposition=write_disposition,
+                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+                schema_update_options=[
+                    bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION,
+                ],
+            )
+        return bigquery.LoadJobConfig(
             autodetect=True,
-            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            write_disposition=write_disposition,
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
         )
+
+    if mode == TransferMode.REPLACE:
+        job_config = _make_load_config(bigquery.WriteDisposition.WRITE_TRUNCATE)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
     elif mode == TransferMode.APPEND_DIRECT:
-        # WRITE_APPEND: 重複チェックなしで追加（高速）
-        job_config = bigquery.LoadJobConfig(
-            autodetect=True,
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        )
+        job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
     elif mode == TransferMode.APPEND:
-        # 通常の追加（スキーマ自動検出）
-        job_config = bigquery.LoadJobConfig(
-            autodetect=True,
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        )
+        job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
@@ -209,11 +211,7 @@ async def write_to_bigquery(
         logger.info("既存データを削除しました: %s", table_ref)
 
         # 削除後にデータを挿入
-        job_config = bigquery.LoadJobConfig(
-            autodetect=True,
-            write_disposition=bigquery.WriteDisposition.WRITE_APPEND,
-            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-        )
+        job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
@@ -230,7 +228,7 @@ async def write_to_bigquery(
 
             # 一時テーブルにデータをロード
             job_config = bigquery.LoadJobConfig(
-                autodetect=True,
+                schema=source_table.schema,
                 write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
                 source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
             )
