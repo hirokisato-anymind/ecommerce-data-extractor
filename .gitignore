@@ -1,0 +1,12 @@
+node_modules/
+.next/
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+.venv/
+.DS_Store
+google_oauth_config.json
+google_tokens.json
+schedules.json
+exports/

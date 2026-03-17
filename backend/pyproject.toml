@@ -1,0 +1,20 @@
+[project]
+name = "ecommerce-data-extractor"
+version = "0.1.0"
+description = "EC Data Extractor - Read-only data extraction from multiple e-commerce platforms"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "pydantic-settings",
+    "python-dotenv",
+    "python-multipart",
+    "apscheduler>=3.10,<4",
+    "google-cloud-bigquery",
+    "google-auth",
+]
+
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
