@@ -248,19 +248,15 @@ export function JobList({ onEdit }: JobListProps) {
                     <span className="text-xs text-slate-600">
                       {formatDateTime(job.last_run_at)}
                     </span>
-                    {job.last_run_status && (() => {
-                      const isSuccess = job.last_run_status.startsWith("成功") || job.last_run_status === "success";
-                      const isZeroRows = isSuccess && job.last_run_status.includes("0行");
-                      return (
-                        <Badge
-                          variant={isSuccess ? (isZeroRows ? "outline" : "default") : "destructive"}
-                          className={`text-[10px] px-1.5 py-0 ${isZeroRows ? "text-amber-600 border-amber-400" : ""}`}
-                          title={job.last_run_status}
-                        >
-                          {isSuccess ? (isZeroRows ? "0件" : job.last_run_status.match(/(\d+)行/)?.[0] || "成功") : "失敗"}
-                        </Badge>
-                      );
-                    })()}
+                    {job.last_run_status && (
+                      <Badge
+                        variant={job.last_run_status.startsWith("成功") || job.last_run_status === "success" ? "default" : "destructive"}
+                        className="text-[10px] px-1.5 py-0"
+                        title={job.last_run_status}
+                      >
+                        {job.last_run_status.startsWith("成功") || job.last_run_status === "success" ? "成功" : "失敗"}
+                      </Badge>
+                    )}
                   </div>
                 </TableCell>
 
