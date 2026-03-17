@@ -1,12 +1,23 @@
 from dotenv import load_dotenv
 load_dotenv()
 
+import logging
 import os
+import sys
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from contextlib import asynccontextmanager
+
+# Configure logging to stdout so Cloud Run captures it
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    stream=sys.stdout,
+    force=True,
+)
 
 from app.routers import bigquery, credentials, endpoints, export, extract, oauth, platforms, schedule, schema
 

@@ -256,8 +256,8 @@ async def delete_schedule(schedule_id: str) -> None:
 
 
 @router.post("/{schedule_id}/run")
-async def trigger_schedule(schedule_id: str, background_tasks: BackgroundTasks) -> dict:
-    """スケジュールを即座に手動実行する。"""
+async def trigger_schedule(schedule_id: str) -> dict:
+    """スケジュールを即座に実行し、完了を待って結果を返す。"""
     schedules = _load_schedules()
     schedule_data = None
     for s in schedules:
@@ -267,8 +267,7 @@ async def trigger_schedule(schedule_id: str, background_tasks: BackgroundTasks) 
     if not schedule_data:
         raise HTTPException(status_code=404, detail=f"スケジュール '{schedule_id}' が見つかりません")
 
-    # FastAPI BackgroundTasksを使用（Cloud Runでリクエスト完了後も実行される）
     from app.core.scheduler import _execute_scheduled_job
-    background_tasks.add_task(_execute_scheduled_job, schedule_data)
+    await _execute_scheduled_job(schedule_data)
 
-    return {"ok": True, "message": f"ジョブ '{schedule_data.get('name', schedule_id)}' の実行を開始しました"}
+    return {"ok": True, "message": f"ジョブ '{schedule_data.get('name', schedule_id)}' の実行が完了しました"}
