@@ -13,6 +13,8 @@ dependencies = [
     "apscheduler>=3.10,<4",
     "google-cloud-bigquery",
     "google-auth",
+    "google-cloud-secret-manager",
+    "google-cloud-storage",
 ]
 
 [build-system]

@@ -9,11 +9,14 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
+from app.core.storage import is_cloud_mode, load_gcs_json, save_gcs_json
+
 logger = logging.getLogger("ecommerce_data_extractor.schedule")
 
 router = APIRouter(prefix="/schedules", tags=["schedules"])
 
 SCHEDULES_FILE = Path(__file__).resolve().parent.parent.parent / "schedules.json"
+_GCS_SCHEDULES_BLOB = "schedules.json"
 
 
 class DestinationConfig(BaseModel):
@@ -101,7 +104,12 @@ class Schedule(BaseModel):
 
 
 def _load_schedules() -> list[dict]:
-    """JSONファイルからスケジュールを読み込む。"""
+    """GCS (cloud) またはJSONファイル (local) からスケジュールを読み込む。"""
+    if is_cloud_mode():
+        data = load_gcs_json(_GCS_SCHEDULES_BLOB)
+        if data is None:
+            return []
+        return data if isinstance(data, list) else []
     if not SCHEDULES_FILE.exists():
         return []
     try:
@@ -115,7 +123,10 @@ def _load_schedules() -> list[dict]:
 
 
 def _save_schedules(schedules: list[dict]) -> None:
-    """スケジュールをJSONファイルに保存する。"""
+    """GCS (cloud) またはJSONファイル (local) にスケジュールを保存する。"""
+    if is_cloud_mode():
+        save_gcs_json(_GCS_SCHEDULES_BLOB, schedules)
+        return
     try:
         SCHEDULES_FILE.write_text(
             json.dumps(schedules, indent=2, ensure_ascii=False),

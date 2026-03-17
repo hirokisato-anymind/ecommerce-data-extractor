@@ -1,9 +1,9 @@
-"""API credentials management - save/load from .env file.
+"""API credentials management - save/load from .env file or Secret Manager.
 
 Security:
 - All endpoints require an admin token (ADMIN_TOKEN env var or auto-generated)
 - Secret values are never returned in responses (only "set" / "not set" status)
-- Credentials are saved to .env and reloaded into memory
+- Credentials are saved to .env (local) or Secret Manager (cloud) and reloaded into memory
 """
 
 import logging
@@ -15,12 +15,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from app.config import settings
+from app.core.storage import is_cloud_mode, load_secret, save_secret
 
 logger = logging.getLogger("ecommerce_data_extractor.credentials")
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
 ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
+_SECRET_ID = "ecommerce-credentials-env"
 
 # Admin token for protecting credential endpoints.
 # Set ADMIN_TOKEN in .env, or one will be auto-generated and printed on startup.
@@ -87,26 +89,45 @@ PLATFORM_KEYS: dict[str, list[dict]] = {
 }
 
 
+def _parse_env_text(text: str) -> dict[str, str]:
+    """Parse .env format text into a dict."""
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" in line:
+            k, v = line.split("=", 1)
+            values[k.strip()] = v.strip()
+    return values
+
+
+def _serialize_env(values: dict[str, str]) -> str:
+    """Serialize dict to .env format text."""
+    lines = [f"{k}={v}" for k, v in sorted(values.items())]
+    return "\n".join(lines) + "\n"
+
+
 def _read_env() -> dict[str, str]:
-    """Read current .env file into a dict."""
+    """Read credentials from Secret Manager (cloud) or .env file (local)."""
+    if is_cloud_mode():
+        raw = load_secret(_SECRET_ID)
+        if raw:
+            return _parse_env_text(raw)
+        return {}
     values: dict[str, str] = {}
     if ENV_PATH.exists():
-        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                k, v = line.split("=", 1)
-                values[k.strip()] = v.strip()
+        values = _parse_env_text(ENV_PATH.read_text(encoding="utf-8"))
     return values
 
 
 def _write_env(values: dict[str, str]) -> None:
-    """Write values to .env file (excluding ADMIN_TOKEN from normal display)."""
-    lines = []
-    for k, v in sorted(values.items()):
-        lines.append(f"{k}={v}")
-    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    """Write credentials to Secret Manager (cloud) or .env file (local)."""
+    text = _serialize_env(values)
+    if is_cloud_mode():
+        save_secret(_SECRET_ID, text)
+    else:
+        ENV_PATH.write_text(text, encoding="utf-8")
 
 
 @router.get("/{platform_id}")

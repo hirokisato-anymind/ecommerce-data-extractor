@@ -8,14 +8,17 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
+from app.core.storage import is_cloud_mode, load_secret_json, save_secret_json
+
 logger = logging.getLogger("ecommerce_data_extractor.bigquery_router")
 
 router = APIRouter(prefix="/bigquery", tags=["bigquery"])
 
 # Google OAuth設定
-# 環境変数 or .env に GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET を設定
 TOKENS_FILE = Path(__file__).resolve().parent.parent.parent / "google_tokens.json"
 OAUTH_CONFIG_FILE = Path(__file__).resolve().parent.parent.parent / "google_oauth_config.json"
+_SM_OAUTH_CONFIG = "ecommerce-bq-oauth-config"
+_SM_TOKENS = "ecommerce-bq-tokens"
 SCOPES = [
     "https://www.googleapis.com/auth/bigquery",
     "https://www.googleapis.com/auth/userinfo.email",
@@ -23,9 +26,14 @@ SCOPES = [
 
 
 def _get_google_oauth_config() -> dict:
-    """Google OAuth クライアント設定を取得する（JSONファイル → 環境変数の順で参照）。"""
+    """Google OAuth クライアント設定を取得する（Secret Manager → JSONファイル → 環境変数の順で参照）。"""
     import os
-    # まずJSONファイルから読み込み
+    # Cloud: Secret Manager
+    if is_cloud_mode():
+        config = load_secret_json(_SM_OAUTH_CONFIG)
+        if config and config.get("client_id") and config.get("client_secret"):
+            return config
+    # Local: JSONファイル
     if OAUTH_CONFIG_FILE.exists():
         try:
             config = json.loads(OAUTH_CONFIG_FILE.read_text(encoding="utf-8"))
@@ -40,24 +48,29 @@ def _get_google_oauth_config() -> dict:
 
 
 def _save_oauth_config(client_id: str, client_secret: str) -> None:
-    """Google OAuthクライアント設定をJSONファイルに保存する。"""
+    """Google OAuthクライアント設定を保存する。"""
     import os
-    OAUTH_CONFIG_FILE.write_text(
-        json.dumps({"client_id": client_id, "client_secret": client_secret}, indent=2),
-        encoding="utf-8",
-    )
-    # 環境変数にも即時反映
+    data = {"client_id": client_id, "client_secret": client_secret}
+    if is_cloud_mode():
+        save_secret_json(_SM_OAUTH_CONFIG, data)
+    else:
+        OAUTH_CONFIG_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
     os.environ["GOOGLE_CLIENT_ID"] = client_id
     os.environ["GOOGLE_CLIENT_SECRET"] = client_secret
 
 
 def _save_tokens(tokens: dict) -> None:
-    """OAuthトークンをファイルに保存する。"""
-    TOKENS_FILE.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
+    """OAuthトークンを保存する。"""
+    if is_cloud_mode():
+        save_secret_json(_SM_TOKENS, tokens)
+    else:
+        TOKENS_FILE.write_text(json.dumps(tokens, indent=2), encoding="utf-8")
 
 
 def _load_tokens() -> dict | None:
     """保存済みOAuthトークンを読み込む。"""
+    if is_cloud_mode():
+        return load_secret_json(_SM_TOKENS)
     if not TOKENS_FILE.exists():
         return None
     try:

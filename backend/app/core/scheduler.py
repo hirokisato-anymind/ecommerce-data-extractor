@@ -8,15 +8,23 @@ from pathlib import Path
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from app.core.storage import is_cloud_mode, load_gcs_json, save_gcs_json
+
 logger = logging.getLogger("ecommerce_data_extractor.scheduler")
 
 SCHEDULES_FILE = Path(__file__).resolve().parent.parent.parent / "schedules.json"
+_GCS_SCHEDULES_BLOB = "schedules.json"
 
 scheduler = AsyncIOScheduler()
 
 
 def _load_schedules_from_file() -> list[dict]:
-    """JSONファイルからスケジュールを直接読み込む。"""
+    """GCS (cloud) またはJSONファイル (local) からスケジュールを直接読み込む。"""
+    if is_cloud_mode():
+        data = load_gcs_json(_GCS_SCHEDULES_BLOB)
+        if data is None:
+            return []
+        return data if isinstance(data, list) else []
     if not SCHEDULES_FILE.exists():
         return []
     try:
@@ -25,6 +33,17 @@ def _load_schedules_from_file() -> list[dict]:
     except (json.JSONDecodeError, OSError) as e:
         logger.error("スケジュールファイルの読み込みに失敗: %s", e)
         return []
+
+
+def _save_schedules_to_file(schedules: list[dict]) -> None:
+    """GCS (cloud) またはJSONファイル (local) にスケジュールを保存する。"""
+    if is_cloud_mode():
+        save_gcs_json(_GCS_SCHEDULES_BLOB, schedules)
+    else:
+        SCHEDULES_FILE.write_text(
+            json.dumps(schedules, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
 
 def _update_schedule_run_status(schedule_id: str, status: str) -> None:
@@ -36,10 +55,7 @@ def _update_schedule_run_status(schedule_id: str, status: str) -> None:
                 s["last_run_at"] = datetime.now(timezone.utc).isoformat()
                 s["last_run_status"] = status
                 break
-        SCHEDULES_FILE.write_text(
-            json.dumps(schedules, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        _save_schedules_to_file(schedules)
     except Exception as e:
         logger.error("スケジュール %s の実行ステータス更新に失敗: %s", schedule_id, e)
 
