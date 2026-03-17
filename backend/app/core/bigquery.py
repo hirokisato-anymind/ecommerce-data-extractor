@@ -204,115 +204,115 @@ async def write_to_bigquery(
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
         )
 
+    def _load_to_temp_table(src_rows: list[dict]) -> str:
+        """一時テーブルにデータをロードし、テーブル参照を返す。"""
+        temp_id = f"{table_id}_tmp_{int(__import__('time').time())}"
+        temp_ref = f"{project_id}.{dataset_id}.{temp_id}"
+        source_table = client.get_table(table_ref)
+        temp_tbl = bigquery.Table(temp_ref, schema=source_table.schema)
+        client.create_table(temp_tbl)
+        cfg = bigquery.LoadJobConfig(
+            schema=source_table.schema,
+            write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
+            source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
+        )
+        job = client.load_table_from_json(src_rows, temp_ref, job_config=cfg)
+        job.result()
+        return temp_ref
+
+    def _merge_sql(temp_ref: str, on_cols: list[str], *, update: bool) -> str:
+        """MERGE SQLを構築する。update=FalseならINSERTのみ（APPEND用）。"""
+        source_table = client.get_table(table_ref)
+        all_cols = [f.name for f in source_table.schema]
+        on_clause = " AND ".join(f"T.`{c}` = S.`{c}`" for c in on_cols)
+        insert_cols = ", ".join(f"`{c}`" for c in all_cols)
+        insert_vals = ", ".join(f"S.`{c}`" for c in all_cols)
+
+        sql = f"MERGE `{table_ref}` T USING `{temp_ref}` S ON {on_clause}\n"
+        if update:
+            upd_cols = [c for c in all_cols if c not in on_cols] or all_cols
+            upd_clause = ", ".join(f"T.`{c}` = S.`{c}`" for c in upd_cols)
+            sql += f"WHEN MATCHED THEN UPDATE SET {upd_clause}\n"
+        sql += f"WHEN NOT MATCHED THEN INSERT ({insert_cols}) VALUES ({insert_vals})"
+        return sql
+
+    def _safe_sql_value(value: object) -> str:
+        """値をSQL用にエスケープする。"""
+        if value is None:
+            return "NULL"
+        if isinstance(value, bool):
+            return "TRUE" if value else "FALSE"
+        if isinstance(value, (int, float)):
+            return str(value)
+        # 文字列: シングルクォートをエスケープ
+        return "'" + str(value).replace("'", "\\'") + "'"
+
     if mode == TransferMode.REPLACE:
         job_config = _make_load_config(bigquery.WriteDisposition.WRITE_TRUNCATE)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
     elif mode == TransferMode.APPEND_DIRECT:
+        # 重複チェックなしで単純追加
         job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
     elif mode == TransferMode.APPEND:
-        job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
-        job = client.load_table_from_json(rows, table_ref, job_config=job_config)
-        job.result()
+        # キーカラムが指定されている場合: MERGEで新規行のみINSERT（重複スキップ）
+        # キーカラムなし: APPEND_DIRECTと同じ動作
+        if key_columns:
+            temp_ref = _load_to_temp_table(rows)
+            try:
+                sql = _merge_sql(temp_ref, key_columns, update=False)
+                result_job = client.query(sql)
+                result_job.result()
+                logger.info("APPEND (重複スキップ) 完了: %s", table_ref)
+            finally:
+                client.delete_table(temp_ref, not_found_ok=True)
+        else:
+            job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
+            job = client.load_table_from_json(rows, table_ref, job_config=job_config)
+            job.result()
 
     elif mode == TransferMode.DELETE_IN_ADVANCE:
         # キーカラムに一致する行を削除してから挿入
-        key_values = set()
+        unique_key_values: set[tuple] = set()
         for row in rows:
-            key_tuple = tuple(row.get(k) for k in key_columns)
-            key_values.add(key_tuple)
+            unique_key_values.add(tuple(row.get(k) for k in key_columns))
 
         if len(key_columns) == 1:
             col = key_columns[0]
-            values_list = [repr(row.get(col)) for row in rows]
-            values_str = ", ".join(set(values_list))
-            delete_sql = f"DELETE FROM `{table_ref}` WHERE `{col}` IN ({values_str})"
+            vals = ", ".join(
+                _safe_sql_value(kv[0]) for kv in unique_key_values
+            )
+            delete_sql = f"DELETE FROM `{table_ref}` WHERE `{col}` IN ({vals})"
         else:
             conditions = []
-            for row in rows:
+            for kv in unique_key_values:
                 parts = [
-                    f"`{col}` = {repr(row.get(col))}" for col in key_columns
+                    f"`{key_columns[i]}` = {_safe_sql_value(kv[i])}"
+                    for i in range(len(key_columns))
                 ]
                 conditions.append(f"({' AND '.join(parts)})")
-            # 重複条件を除去
-            unique_conditions = list(set(conditions))
-            delete_sql = (
-                f"DELETE FROM `{table_ref}` WHERE "
-                + " OR ".join(unique_conditions)
-            )
+            delete_sql = f"DELETE FROM `{table_ref}` WHERE " + " OR ".join(conditions)
 
         client.query(delete_sql).result()
         logger.info("既存データを削除しました: %s", table_ref)
 
-        # 削除後にデータを挿入
         job_config = _make_load_config(bigquery.WriteDisposition.WRITE_APPEND)
         job = client.load_table_from_json(rows, table_ref, job_config=job_config)
         job.result()
 
     elif mode == TransferMode.UPSERT:
-        # 一時テーブルにデータを読み込み、MERGE SQLでUPSERT
-        temp_table_id = f"{table_id}_temp_{int(__import__('time').time())}"
-        temp_table_ref = f"{project_id}.{dataset_id}.{temp_table_id}"
-
+        # 一時テーブル→MERGEでUPSERT（マッチ時UPDATE、非マッチ時INSERT）
+        temp_ref = _load_to_temp_table(rows)
         try:
-            # 元テーブルのスキーマをコピーして一時テーブルを作成
-            source_table = client.get_table(table_ref)
-            temp_table = bigquery.Table(temp_table_ref, schema=source_table.schema)
-            client.create_table(temp_table)
-
-            # 一時テーブルにデータをロード
-            job_config = bigquery.LoadJobConfig(
-                schema=source_table.schema,
-                write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
-                source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-            )
-            job = client.load_table_from_json(
-                rows, temp_table_ref, job_config=job_config
-            )
-            job.result()
-
-            # MERGE SQL を構築
-            on_clause = " AND ".join(
-                f"T.`{col}` = S.`{col}`" for col in key_columns
-            )
-
-            # 全カラム名を取得
-            all_columns = [field.name for field in source_table.schema]
-            update_columns = [c for c in all_columns if c not in key_columns]
-
-            update_clause = ", ".join(
-                f"T.`{col}` = S.`{col}`" for col in update_columns
-            ) if update_columns else ", ".join(
-                f"T.`{col}` = S.`{col}`" for col in all_columns
-            )
-
-            insert_columns = ", ".join(f"`{col}`" for col in all_columns)
-            insert_values = ", ".join(f"S.`{col}`" for col in all_columns)
-
-            merge_sql = f"""
-                MERGE `{table_ref}` T
-                USING `{temp_table_ref}` S
-                ON {on_clause}
-                WHEN MATCHED THEN
-                    UPDATE SET {update_clause}
-                WHEN NOT MATCHED THEN
-                    INSERT ({insert_columns})
-                    VALUES ({insert_values})
-            """
-
-            client.query(merge_sql).result()
+            sql = _merge_sql(temp_ref, key_columns, update=True)
+            client.query(sql).result()
             logger.info("UPSERT完了: %s", table_ref)
-
         finally:
-            # 一時テーブルを削除
-            try:
-                client.delete_table(temp_table_ref, not_found_ok=True)
-            except Exception as e:
-                logger.warning("一時テーブル %s の削除に失敗: %s", temp_table_ref, e)
+            client.delete_table(temp_ref, not_found_ok=True)
 
     result = {
         "rows_written": len(rows),
