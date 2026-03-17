@@ -10,7 +10,7 @@ dependencies = [
     "pydantic-settings",
     "python-dotenv",
     "python-multipart",
-    "apscheduler>=3.10,<4",
+    "google-cloud-scheduler",
     "google-cloud-bigquery",
     "google-auth",
     "google-cloud-secret-manager",

@@ -1,4 +1,4 @@
-"""スケジュール抽出ジョブのAPScheduler統合。"""
+"""スケジュール抽出ジョブの実行とストレージ管理。"""
 
 import asyncio
 import json
@@ -6,17 +6,12 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
-
 from app.core.storage import is_cloud_mode, load_gcs_json, save_gcs_json
 
 logger = logging.getLogger("ecommerce_data_extractor.scheduler")
 
 SCHEDULES_FILE = Path(__file__).resolve().parent.parent.parent / "schedules.json"
 _GCS_SCHEDULES_BLOB = "schedules.json"
-
-scheduler = AsyncIOScheduler()
 
 
 def _load_schedules_from_file() -> list[dict]:
@@ -190,99 +185,3 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
     except Exception as e:
         logger.exception("スケジュールジョブ %s 失敗: %s", schedule_id, e)
         _update_schedule_run_status(schedule_id, f"エラー: {e}")
-
-
-def add_job(schedule) -> None:
-    """Scheduleオブジェクトまたはdictからスケジューラにジョブを追加する。"""
-    if hasattr(schedule, "model_dump"):
-        data = schedule.model_dump()
-    elif isinstance(schedule, dict):
-        data = schedule
-    else:
-        raise TypeError(f"サポートされていないスケジュール型: {type(schedule)}")
-
-    schedule_id = data["id"]
-
-    # schedule_configからCronTriggerを構築
-    schedule_config = data.get("schedule_config")
-    if schedule_config:
-        from app.routers.schedule import ScheduleConfig, schedule_config_to_cron
-
-        if isinstance(schedule_config, dict):
-            config_obj = ScheduleConfig(**schedule_config)
-        else:
-            config_obj = schedule_config
-
-        cron_kwargs = schedule_config_to_cron(config_obj)
-        trigger = CronTrigger(**cron_kwargs)
-    else:
-        # 後方互換: cron_expressionが残っている場合
-        cron_expression = data.get("cron_expression", "0 * * * *")
-        trigger = _parse_cron(cron_expression)
-
-    scheduler.add_job(
-        _execute_scheduled_job,
-        trigger=trigger,
-        id=schedule_id,
-        args=[data],
-        replace_existing=True,
-        name=data.get("name", schedule_id),
-    )
-    logger.info("スケジューラジョブ登録: %s", schedule_id)
-
-
-def _parse_cron(cron_expression: str) -> CronTrigger:
-    """cron式文字列をAPSchedulerのCronTriggerにパースする（後方互換用）。"""
-    parts = cron_expression.strip().split()
-    if len(parts) == 5:
-        return CronTrigger(
-            minute=parts[0],
-            hour=parts[1],
-            day=parts[2],
-            month=parts[3],
-            day_of_week=parts[4],
-        )
-    elif len(parts) == 6:
-        return CronTrigger(
-            second=parts[0],
-            minute=parts[1],
-            hour=parts[2],
-            day=parts[3],
-            month=parts[4],
-            day_of_week=parts[5],
-        )
-    else:
-        raise ValueError(f"不正なcron式です: {cron_expression}")
-
-
-def remove_job(schedule_id: str) -> None:
-    """スケジューラからジョブを削除する。"""
-    try:
-        scheduler.remove_job(schedule_id)
-        logger.info("スケジューラジョブ削除: %s", schedule_id)
-    except Exception:
-        logger.debug("ジョブ %s がスケジューラに見つかりません（未登録の可能性）", schedule_id)
-
-
-def load_all_schedules() -> None:
-    """JSONファイルから全有効スケジュールを読み込み登録する。"""
-    schedules = _load_schedules_from_file()
-    count = 0
-    for s in schedules:
-        if s.get("enabled", True):
-            add_job(s)
-            count += 1
-    logger.info("%d件の有効なスケジュールを読み込みました", count)
-
-
-def start_scheduler() -> None:
-    """APSchedulerを起動し既存スケジュールを読み込む。"""
-    load_all_schedules()
-    scheduler.start()
-    logger.info("スケジューラを起動しました")
-
-
-def stop_scheduler() -> None:
-    """スケジューラを停止する。"""
-    scheduler.shutdown(wait=False)
-    logger.info("スケジューラを停止しました")

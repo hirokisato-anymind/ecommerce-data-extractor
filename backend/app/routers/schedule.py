@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.core.storage import is_cloud_mode, load_gcs_json, save_gcs_json
@@ -168,14 +168,13 @@ async def create_schedule(body: ScheduleCreate) -> Schedule:
     schedules.append(schedule.model_dump())
     _save_schedules(schedules)
 
-    # 有効な場合、スケジューラに登録
+    # Cloud Scheduler にジョブを作成
     try:
-        from app.core.scheduler import add_job
+        from app.core.cloud_scheduler import create_cloud_scheduler_job
 
-        if schedule.enabled:
-            add_job(schedule)
+        create_cloud_scheduler_job(schedule.id, body.schedule_config, body.enabled)
     except Exception as e:
-        logger.warning("スケジューラへのジョブ登録に失敗: %s", e)
+        logger.warning("Cloud Scheduler ジョブの作成に失敗: %s", e)
 
     logger.info("スケジュール作成: %s (%s)", schedule.id, schedule.name)
     return schedule
@@ -218,15 +217,13 @@ async def update_schedule(schedule_id: str, body: ScheduleUpdate) -> Schedule:
 
             updated = Schedule(**s)
 
-            # スケジューラを再登録
+            # Cloud Scheduler ジョブを更新
             try:
-                from app.core.scheduler import remove_job, add_job
+                from app.core.cloud_scheduler import update_cloud_scheduler_job
 
-                remove_job(schedule_id)
-                if updated.enabled:
-                    add_job(updated)
+                update_cloud_scheduler_job(schedule_id, updated.schedule_config, updated.enabled)
             except Exception as e:
-                logger.warning("スケジューラジョブの更新に失敗: %s", e)
+                logger.warning("Cloud Scheduler ジョブの更新に失敗: %s", e)
 
             logger.info("スケジュール更新: %s", schedule_id)
             return updated
@@ -244,13 +241,13 @@ async def delete_schedule(schedule_id: str) -> None:
 
     _save_schedules(new_schedules)
 
-    # スケジューラから削除
+    # Cloud Scheduler からジョブを削除
     try:
-        from app.core.scheduler import remove_job
+        from app.core.cloud_scheduler import delete_cloud_scheduler_job
 
-        remove_job(schedule_id)
+        delete_cloud_scheduler_job(schedule_id)
     except Exception as e:
-        logger.warning("スケジューラジョブの削除に失敗: %s", e)
+        logger.warning("Cloud Scheduler ジョブの削除に失敗: %s", e)
 
     logger.info("スケジュール削除: %s", schedule_id)
 

@@ -37,17 +37,7 @@ async def lifespan(app_instance):
     except Exception:
         _logger.warning("Failed to load credentials from storage", exc_info=True)
 
-    from app.core.scheduler import start_scheduler, stop_scheduler
-
-    try:
-        start_scheduler()
-    except Exception:
-        _logger.warning("Scheduler failed to start", exc_info=True)
     yield
-    try:
-        stop_scheduler()
-    except Exception:
-        pass
 
 app = FastAPI(
     title="EC Data Extractor",
