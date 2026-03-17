@@ -23,22 +23,22 @@ USER_AGENT = "EcommerceDataExtractor/1.0 (Language=Python)"
 ENDPOINT_DEFS: list[dict[str, str]] = [
     {
         "id": "orders",
-        "name": "受注データ",
+        "name": "Orders - 受注データ",
         "description": "注文＋注文明細（直近30日間）",
     },
     {
         "id": "finances",
-        "name": "売上・手数料",
+        "name": "Financial Events - 売上・手数料明細",
         "description": "出荷イベント別の売上・手数料・ポイント明細（直近30日間）",
     },
     {
         "id": "inventory",
-        "name": "FBA在庫",
+        "name": "FBA Inventory - 在庫サマリー",
         "description": "FBA在庫サマリー（数量内訳付き）",
     },
     {
         "id": "reports",
-        "name": "レポート一覧",
+        "name": "Reports - レポート一覧",
         "description": "直近のレポート一覧（出品・注文・在庫等）",
     },
 ]
@@ -117,6 +117,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "TotalCharge", "type": "number", "description": "売上合計"},
             {"name": "TotalFee", "type": "number", "description": "手数料合計"},
             {"name": "NetProceeds", "type": "number", "description": "純収益 (売上-手数料-ポイント)"},
+            {"name": "EventType", "type": "string", "description": "イベント種別 (Shipment/Refund/GuaranteeClaim)"},
         ],
     },
     "inventory": {
@@ -237,8 +238,8 @@ def _flatten_order(order: dict[str, Any], order_items: list[dict] | None = None)
     return flat
 
 
-def _flatten_finance_event(event: dict[str, Any]) -> list[dict[str, Any]]:
-    """Flatten a shipment financial event into per-item rows."""
+def _flatten_finance_event(event: dict[str, Any], event_type: str = "Shipment") -> list[dict[str, Any]]:
+    """Flatten a shipment/refund/guarantee financial event into per-item rows."""
     rows = []
     order_id = event.get("AmazonOrderId")
     posted = event.get("PostedDate")
@@ -251,6 +252,7 @@ def _flatten_finance_event(event: dict[str, Any]) -> list[dict[str, Any]]:
             "MarketplaceName": marketplace,
             "SellerSKU": item.get("SellerSKU"),
             "QuantityShipped": item.get("QuantityShipped"),
+            "EventType": event_type,
         }
 
         # Parse charges
@@ -497,15 +499,22 @@ class AmazonClient(PlatformClient):
         body = await self._sp_api_get("/finances/v0/financialEvents", params=params)
         payload = body.get("payload", body)
         events = payload.get("FinancialEvents", {})
-        shipment_events = events.get("ShipmentEventList", [])
+        event_lists = [
+            ("ShipmentEventList", "Shipment"),
+            ("RefundEventList", "Refund"),
+            ("GuaranteeClaimEventList", "GuaranteeClaim"),
+        ]
 
         records = []
-        for event in shipment_events:
-            rows = _flatten_finance_event(event)
-            for row in rows:
-                if columns:
-                    row = {k: row.get(k) for k in columns}
-                records.append(row)
+        for list_key, event_type in event_lists:
+            for event in events.get(list_key, []):
+                rows = _flatten_finance_event(event, event_type=event_type)
+                for row in rows:
+                    if columns:
+                        row = {k: row.get(k) for k in columns}
+                    records.append(row)
+                    if len(records) >= limit:
+                        break
                 if len(records) >= limit:
                     break
             if len(records) >= limit:

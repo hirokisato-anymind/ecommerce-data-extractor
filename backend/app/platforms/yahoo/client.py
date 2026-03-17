@@ -15,22 +15,22 @@ logger = logging.getLogger("ecommerce_data_extractor.yahoo")
 ENDPOINT_DEFS: list[dict[str, str]] = [
     {
         "id": "item_search",
-        "name": "商品検索 (Item Search)",
+        "name": "ItemSearch API - 商品検索",
         "description": "Yahoo!ショッピング商品検索API。キーワードで商品を検索します。",
     },
     {
         "id": "category_ranking",
-        "name": "カテゴリランキング (Category Ranking)",
+        "name": "CategoryRanking API - カテゴリランキング",
         "description": "Yahoo!ショッピングカテゴリ別ランキングAPI。",
     },
     {
         "id": "seller_items",
-        "name": "出店者商品一覧 (Seller Item List)",
+        "name": "StoreItemList API - 出店者商品一覧",
         "description": "出店者の商品一覧を取得します。アクセストークンが必要です。",
     },
     {
         "id": "seller_orders",
-        "name": "出店者注文一覧 (Seller Order List)",
+        "name": "OrderList API - 出店者注文一覧",
         "description": "出店者の注文一覧を取得します。アクセストークンが必要です。",
     },
 ]

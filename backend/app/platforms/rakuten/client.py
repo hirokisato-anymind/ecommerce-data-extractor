@@ -34,17 +34,17 @@ RMS_INVENTORY_BULK_GET_URL = (
 ENDPOINTS: list[dict[str, str]] = [
     {
         "id": "rms_orders",
-        "name": "受注データ",
+        "name": "RMS Orders - 受注データ",
         "description": "RMS 受注検索API – 自店舗の注文データを取得（直近2年、最大63日間隔）",
     },
     {
         "id": "rms_items",
-        "name": "商品管理",
+        "name": "RMS Items - 商品データ",
         "description": "RMS 商品API 2.0 – 自店舗の商品一覧を取得",
     },
     {
         "id": "rms_inventory",
-        "name": "在庫管理",
+        "name": "RMS Inventory - 在庫データ",
         "description": "RMS 在庫API 2.1 – 自店舗の在庫状況を取得（商品一覧から自動取得）",
     },
 ]

@@ -204,22 +204,22 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
 ENDPOINT_DEFS: list[dict[str, str]] = [
     {
         "id": "products",
-        "name": "Products",
+        "name": "Products - 商品データ",
         "description": "Shopify products with variants, pricing, and inventory.",
     },
     {
         "id": "orders",
-        "name": "Orders",
+        "name": "Orders - 受注データ",
         "description": "Shopify orders with line items and financial/fulfillment status.",
     },
     {
         "id": "customers",
-        "name": "Customers",
+        "name": "Customers - 顧客データ",
         "description": "Shopify customer profiles with order history summary.",
     },
     {
         "id": "inventory",
-        "name": "Inventory",
+        "name": "Inventory - 在庫データ",
         "description": "Inventory items with stock levels per location.",
     },
 ]
