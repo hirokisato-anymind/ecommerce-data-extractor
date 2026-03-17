@@ -208,6 +208,7 @@ async def write_to_bigquery(
         """一時テーブルにデータをロードし、テーブル参照を返す。"""
         temp_id = f"{table_id}_tmp_{int(__import__('time').time())}"
         temp_ref = f"{project_id}.{dataset_id}.{temp_id}"
+        _ensure_dataset_exists(client, project_id, dataset_id, location)
         source_table = client.get_table(table_ref)
         temp_tbl = bigquery.Table(temp_ref, schema=source_table.schema)
         client.create_table(temp_tbl)
