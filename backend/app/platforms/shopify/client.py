@@ -13,8 +13,8 @@ logger = logging.getLogger("ecommerce_data_extractor.shopify")
 
 GRAPHQL_QUERIES: dict[str, str] = {
     "products": """
-query Products($limit: Int!, $cursor: String) {
-  products(first: $limit, after: $cursor) {
+query Products($limit: Int!, $cursor: String, $query: String) {
+  products(first: $limit, after: $cursor, query: $query) {
     edges {
       node {
         id
@@ -48,8 +48,8 @@ query Products($limit: Int!, $cursor: String) {
 }
 """,
     "orders": """
-query Orders($limit: Int!, $cursor: String) {
-  orders(first: $limit, after: $cursor) {
+query Orders($limit: Int!, $cursor: String, $query: String) {
+  orders(first: $limit, after: $cursor, query: $query) {
     edges {
       node {
         id
@@ -85,8 +85,8 @@ query Orders($limit: Int!, $cursor: String) {
 }
 """,
     "customers": """
-query Customers($limit: Int!, $cursor: String) {
-  customers(first: $limit, after: $cursor) {
+query Customers($limit: Int!, $cursor: String, $query: String) {
+  customers(first: $limit, after: $cursor, query: $query) {
     edges {
       node {
         id
@@ -163,7 +163,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "id", "type": "string", "description": "Order GID"},
             {"name": "name", "type": "string", "description": "Order name (e.g. #1001)"},
             {"name": "email", "type": "string", "description": "Customer email"},
-            {"name": "totalAmount", "type": "string", "description": "Total price amount"},
+            {"name": "totalAmount", "type": "number", "description": "Total price amount"},
             {"name": "totalCurrency", "type": "string", "description": "Total price currency code"},
             {"name": "financialStatus", "type": "string", "description": "Financial status"},
             {"name": "fulfillmentStatus", "type": "string", "description": "Fulfillment status"},
@@ -180,7 +180,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "email", "type": "string", "description": "Email address"},
             {"name": "phone", "type": "string", "description": "Phone number"},
             {"name": "ordersCount", "type": "integer", "description": "Total number of orders"},
-            {"name": "totalSpent", "type": "string", "description": "Total amount spent"},
+            {"name": "totalSpent", "type": "number", "description": "Total amount spent"},
             {"name": "state", "type": "string", "description": "Customer account state"},
             {"name": "createdAt", "type": "datetime", "description": "Creation timestamp"},
             {"name": "updatedAt", "type": "datetime", "description": "Last update timestamp"},
@@ -331,6 +331,9 @@ class ShopifyClient(PlatformClient):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         """Extract data from Shopify GraphQL Admin API.
 
@@ -345,9 +348,18 @@ class ShopifyClient(PlatformClient):
             raise ValueError(f"Unknown endpoint: {endpoint_id}")
 
         query = GRAPHQL_QUERIES[endpoint_id]
-        variables: dict[str, Any] = {"limit": limit}
+        variables: dict[str, Any] = {"limit": min(limit, 250)}
         if cursor:
             variables["cursor"] = cursor
+
+        # Build Shopify query string for date range filtering
+        query_parts: list[str] = []
+        if start_date:
+            query_parts.append(f"created_at:>={start_date}")
+        if end_date:
+            query_parts.append(f"created_at:<={end_date}")
+        if query_parts:
+            variables["query"] = " AND ".join(query_parts)
 
         url = f"https://{self._store_domain}/admin/api/2024-01/graphql.json"
         headers = {

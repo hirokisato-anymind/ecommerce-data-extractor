@@ -17,11 +17,11 @@ export function RecordLimitControl({
       <Input
         type="number"
         min={1}
-        max={1000}
+        max={10000}
         value={value}
         onChange={(e) => {
           const n = parseInt(e.target.value, 10);
-          if (!isNaN(n) && n >= 1 && n <= 1000) onChange(n);
+          if (!isNaN(n) && n >= 1 && n <= 10000) onChange(n);
         }}
         className="w-32"
       />

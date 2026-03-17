@@ -51,23 +51,23 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
         "fields": [
             # 注文基本
             {"name": "AmazonOrderId", "type": "string", "description": "Amazon注文ID"},
-            {"name": "PurchaseDate", "type": "string", "description": "購入日時"},
-            {"name": "LastUpdateDate", "type": "string", "description": "最終更新日時"},
+            {"name": "PurchaseDate", "type": "datetime", "description": "購入日時"},
+            {"name": "LastUpdateDate", "type": "datetime", "description": "最終更新日時"},
             {"name": "OrderStatus", "type": "string", "description": "注文ステータス (Pending/Unshipped/Shipped/Canceled等)"},
             {"name": "OrderType", "type": "string", "description": "注文タイプ (StandardOrder等)"},
             {"name": "SalesChannel", "type": "string", "description": "販売チャネル"},
             {"name": "FulfillmentChannel", "type": "string", "description": "フルフィルメント (AFN=FBA, MFN=自社出荷)"},
             # 金額
-            {"name": "OrderTotalAmount", "type": "string", "description": "注文合計金額"},
+            {"name": "OrderTotalAmount", "type": "number", "description": "注文合計金額"},
             {"name": "OrderTotalCurrency", "type": "string", "description": "通貨コード"},
             {"name": "NumberOfItemsShipped", "type": "integer", "description": "出荷済み商品数"},
             {"name": "NumberOfItemsUnshipped", "type": "integer", "description": "未出荷商品数"},
             # 配送
             {"name": "ShipServiceLevel", "type": "string", "description": "配送サービスレベル"},
-            {"name": "EarliestShipDate", "type": "string", "description": "最早出荷日"},
-            {"name": "LatestShipDate", "type": "string", "description": "最終出荷日"},
-            {"name": "EarliestDeliveryDate", "type": "string", "description": "最早配達日"},
-            {"name": "LatestDeliveryDate", "type": "string", "description": "最終配達日"},
+            {"name": "EarliestShipDate", "type": "datetime", "description": "最早出荷日"},
+            {"name": "LatestShipDate", "type": "datetime", "description": "最終出荷日"},
+            {"name": "EarliestDeliveryDate", "type": "datetime", "description": "最早配達日"},
+            {"name": "LatestDeliveryDate", "type": "datetime", "description": "最終配達日"},
             {"name": "ShippingPrefecture", "type": "string", "description": "配送先都道府県"},
             {"name": "ShippingPostalCode", "type": "string", "description": "配送先郵便番号"},
             {"name": "AutomatedCarrier", "type": "string", "description": "自動配送キャリア"},
@@ -93,7 +93,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
     "finances": {
         "fields": [
             {"name": "AmazonOrderId", "type": "string", "description": "Amazon注文ID"},
-            {"name": "PostedDate", "type": "string", "description": "計上日時"},
+            {"name": "PostedDate", "type": "datetime", "description": "計上日時"},
             {"name": "MarketplaceName", "type": "string", "description": "マーケットプレイス"},
             {"name": "SellerSKU", "type": "string", "description": "出品者SKU"},
             {"name": "QuantityShipped", "type": "integer", "description": "出荷数量"},
@@ -135,9 +135,9 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "reportId", "type": "string", "description": "レポートID"},
             {"name": "reportType", "type": "string", "description": "レポートタイプ"},
             {"name": "processingStatus", "type": "string", "description": "処理ステータス (IN_QUEUE/IN_PROGRESS/DONE等)"},
-            {"name": "dataStartTime", "type": "string", "description": "データ開始日時"},
-            {"name": "dataEndTime", "type": "string", "description": "データ終了日時"},
-            {"name": "createdTime", "type": "string", "description": "レポート作成日時"},
+            {"name": "dataStartTime", "type": "datetime", "description": "データ開始日時"},
+            {"name": "dataEndTime", "type": "datetime", "description": "データ終了日時"},
+            {"name": "createdTime", "type": "datetime", "description": "レポート作成日時"},
         ],
     },
 }
@@ -396,6 +396,9 @@ class AmazonClient(PlatformClient):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         handlers = {
             "orders": self._extract_orders,
@@ -406,21 +409,28 @@ class AmazonClient(PlatformClient):
         handler = handlers.get(endpoint_id)
         if handler is None:
             raise ValueError(f"Unknown endpoint: {endpoint_id}")
-        return await handler(columns=columns, limit=limit, cursor=cursor)
+        return await handler(columns=columns, limit=limit, cursor=cursor,
+                             start_date=start_date, end_date=end_date)
 
     # -- Orders (with OrderItems) ---------------------------------------------
 
     async def _extract_orders(
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
-        created_after = (
-            datetime.now(timezone.utc) - timedelta(days=30)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if start_date:
+            created_after = f"{start_date}T00:00:00Z"
+        else:
+            created_after = (
+                datetime.now(timezone.utc) - timedelta(days=30)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
         params: dict[str, Any] = {
             "MarketplaceIds": self._marketplace_id,
             "CreatedAfter": created_after,
             "MaxResultsPerPage": min(limit, 100),
         }
+        if end_date:
+            params["CreatedBefore"] = f"{end_date}T23:59:59Z"
         if cursor:
             params["NextToken"] = cursor
 
@@ -461,14 +471,20 @@ class AmazonClient(PlatformClient):
 
     async def _extract_finances(
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
-        posted_after = (
-            datetime.now(timezone.utc) - timedelta(days=30)
-        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if start_date:
+            posted_after = f"{start_date}T00:00:00Z"
+        else:
+            posted_after = (
+                datetime.now(timezone.utc) - timedelta(days=30)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
         params: dict[str, Any] = {
             "PostedAfter": posted_after,
             "MaxResultsPerPage": min(limit, 100),
         }
+        if end_date:
+            params["PostedBefore"] = f"{end_date}T23:59:59Z"
         if cursor:
             params["NextToken"] = cursor
 
@@ -503,6 +519,7 @@ class AmazonClient(PlatformClient):
 
     async def _extract_inventory(
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
         params: dict[str, Any] = {
             "marketplaceIds": self._marketplace_id,
@@ -536,6 +553,7 @@ class AmazonClient(PlatformClient):
 
     async def _extract_reports(
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
         params: dict[str, Any] = {
             "marketplaceIds": self._marketplace_id,

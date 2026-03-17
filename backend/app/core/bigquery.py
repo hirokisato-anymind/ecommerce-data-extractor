@@ -1,8 +1,10 @@
 """BigQueryへのデータ書き込みモジュール。"""
 
 import logging
+import re
 from enum import Enum
 
+from google.api_core.exceptions import NotFound
 from google.cloud import bigquery
 
 logger = logging.getLogger("ecommerce_data_extractor.bigquery")
@@ -30,37 +32,92 @@ def _get_client(
     return bigquery.Client(project=project_id, location=location)
 
 
+_ISO_DATE_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?)?$"
+)
+
+
+def _infer_field_type(value: object) -> str:
+    """単一の値からBigQueryフィールド型を推定する。"""
+    if value is None:
+        return "STRING"
+    if isinstance(value, bool):
+        return "BOOLEAN"
+    if isinstance(value, int):
+        return "INTEGER"
+    if isinstance(value, float):
+        return "FLOAT"
+    if isinstance(value, dict):
+        return "JSON"
+    if isinstance(value, list):
+        return "JSON"
+    if isinstance(value, str) and _ISO_DATE_RE.match(value):
+        return "TIMESTAMP" if "T" in value else "DATE"
+    return "STRING"
+
+
+def _infer_schema(rows: list[dict]) -> list[bigquery.SchemaField]:
+    """複数行を走査してスキーマを推定する。None以外の最初の値で型を決定する。"""
+    # 全行からキーを収集（順序保持）
+    seen_keys: dict[str, str] = {}
+    for row in rows:
+        for key, value in row.items():
+            if key not in seen_keys or seen_keys[key] == "STRING":
+                inferred = _infer_field_type(value)
+                # None由来のSTRINGは仮置き。より具体的な型が見つかれば上書きする
+                if key not in seen_keys or (seen_keys[key] == "STRING" and inferred != "STRING"):
+                    seen_keys[key] = inferred
+
+    return [
+        bigquery.SchemaField(key, field_type, mode="NULLABLE")
+        for key, field_type in seen_keys.items()
+    ]
+
+
+def _ensure_dataset_exists(
+    client: bigquery.Client,
+    project_id: str,
+    dataset_id: str,
+    location: str,
+) -> None:
+    """データセットが存在しない場合は作成する。"""
+    dataset_ref = f"{project_id}.{dataset_id}"
+    try:
+        client.get_dataset(dataset_ref)
+    except NotFound:
+        logger.info("データセット %s が存在しないため作成します", dataset_ref)
+        dataset = bigquery.Dataset(dataset_ref)
+        dataset.location = location
+        client.create_dataset(dataset)
+        logger.info("データセット %s を作成しました", dataset_ref)
+
+
 def _ensure_table_exists(
     client: bigquery.Client,
     table_ref: str,
     rows: list[dict],
+    location: str = "US",
 ) -> bigquery.Table:
-    """テーブルが存在しない場合、行データからスキーマを自動検出して作成する。"""
+    """テーブルが存在しない場合、行データからスキーマを自動検出して作成する。
+    データセットが存在しない場合も自動で作成する。"""
     try:
         return client.get_table(table_ref)
-    except Exception:
+    except NotFound:
         logger.info("テーブル %s が存在しないため作成します", table_ref)
 
     # 行データからスキーマを推定
     if not rows:
         raise ValueError("テーブルが存在せず、スキーマ推定用のデータもありません")
 
-    sample = rows[0]
-    schema = []
-    for key, value in sample.items():
-        if isinstance(value, bool):
-            field_type = "BOOLEAN"
-        elif isinstance(value, int):
-            field_type = "INTEGER"
-        elif isinstance(value, float):
-            field_type = "FLOAT"
-        else:
-            field_type = "STRING"
-        schema.append(bigquery.SchemaField(key, field_type, mode="NULLABLE"))
+    # データセットが存在しない場合は作成
+    parts = table_ref.split(".")
+    if len(parts) == 3:
+        _ensure_dataset_exists(client, parts[0], parts[1], location)
 
+    schema = _infer_schema(rows)
     table = bigquery.Table(table_ref, schema=schema)
     client.create_table(table)
-    logger.info("テーブル %s を作成しました", table_ref)
+    logger.info("テーブル %s を作成しました（%d カラム）", table_ref, len(schema))
     return client.get_table(table_ref)
 
 
@@ -90,7 +147,7 @@ async def write_to_bigquery(
     client = _get_client(project_id, location=location)
     table_ref = f"{project_id}.{dataset_id}.{table_id}"
 
-    _ensure_table_exists(client, table_ref, rows)
+    _ensure_table_exists(client, table_ref, rows, location=location)
 
     if mode == TransferMode.REPLACE:
         # WRITE_TRUNCATE: テーブルを上書き

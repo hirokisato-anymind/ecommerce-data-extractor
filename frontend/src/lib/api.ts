@@ -117,6 +117,9 @@ export const api = {
     limit?: number;
     cursor?: string;
     filters?: string;
+    start_date?: string;
+    end_date?: string;
+    fetch_all?: boolean;
   }) => {
     const searchParams: Record<string, string> = {
       platform_id: params.platform_id,
@@ -126,6 +129,9 @@ export const api = {
     if (params.limit) searchParams.limit = String(params.limit);
     if (params.cursor) searchParams.cursor = params.cursor;
     if (params.filters) searchParams.filters = params.filters;
+    if (params.start_date) searchParams.start_date = params.start_date;
+    if (params.end_date) searchParams.end_date = params.end_date;
+    if (params.fetch_all) searchParams.fetch_all = "true";
     return fetchAPI<ExtractResult>("/extract", searchParams);
   },
   getCredentials: async (platformId: string): Promise<CredentialsResponse> => {

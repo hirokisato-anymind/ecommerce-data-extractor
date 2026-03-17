@@ -88,8 +88,27 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
         client = get_client(platform_id)
         if not client:
             raise ValueError(f"プラットフォーム '{platform_id}' が見つかりません")
+
+        # On Cloud Run, credentials may not be loaded into settings yet
+        # (e.g. after a cold start).  Reload from Secret Manager before
+        # giving up.
         if not client.is_configured():
-            raise ValueError(f"プラットフォーム '{platform_id}' が設定されていません")
+            logger.info(
+                "プラットフォーム '%s' 未設定 - ストレージから認証情報を再読み込みします",
+                platform_id,
+            )
+            try:
+                from app.routers.credentials import load_credentials_from_storage
+                load_credentials_from_storage()
+            except Exception as reload_err:
+                logger.warning("認証情報の再読み込みに失敗: %s", reload_err)
+            # Re-create the client so it picks up the refreshed settings
+            client = get_client(platform_id)
+            if not client or not client.is_configured():
+                raise ValueError(
+                    f"プラットフォーム '{platform_id}' が設定されていません。"
+                    "Secret Manager / .env に認証情報が保存されているか確認してください。"
+                )
 
         # フィルターで参照されるカラムを取得カラムに含める
         filter_columns = set()
@@ -106,14 +125,26 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
         else:
             fetch_columns = columns
 
-        result = await client.extract_data(
-            endpoint_id=endpoint_id,
-            columns=fetch_columns,
-            limit=limit,
-            cursor=None,
-        )
+        # Paginate through all pages up to limit
+        all_items: list[dict] = []
+        current_cursor = None
+        while len(all_items) < limit:
+            page_limit = min(limit - len(all_items), 100)
+            result = await client.extract_data(
+                endpoint_id=endpoint_id,
+                columns=fetch_columns,
+                limit=page_limit,
+                cursor=current_cursor,
+            )
+            page_items = result.get("items", [])
+            all_items.extend(page_items)
 
-        items = result.get("items", [])
+            next_cursor = result.get("next_cursor")
+            if not next_cursor or not page_items:
+                break
+            current_cursor = next_cursor
+
+        items = all_items[:limit]
 
         # フィルター適用
         if filters_def:

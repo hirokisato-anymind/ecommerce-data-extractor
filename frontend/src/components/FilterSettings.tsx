@@ -18,13 +18,14 @@ interface FilterSettingsProps {
 }
 
 const STRING_OPERATORS = [
-  { value: "eq", label: "等しい" },
+  { value: "equals", label: "等しい" },
+  { value: "not_equals", label: "等しくない" },
   { value: "contains", label: "含む" },
   { value: "starts_with", label: "前方一致" },
 ];
 
 const NUMBER_OPERATORS = [
-  { value: "eq", label: "等しい" },
+  { value: "equals", label: "等しい" },
   { value: "gte", label: "以上" },
   { value: "lte", label: "以下" },
   { value: "range", label: "範囲" },
@@ -34,11 +35,18 @@ const DATE_OPERATORS = [
   { value: "last_n_days", label: "直近N日" },
   { value: "last_n_hours", label: "直近N時間" },
   { value: "date_range", label: "期間指定" },
+  { value: "after", label: "以降" },
+  { value: "before", label: "以前" },
+];
+
+const BOOLEAN_OPERATORS = [
+  { value: "equals", label: "等しい" },
 ];
 
 function getOperators(fieldType: string) {
   if (fieldType === "date" || fieldType === "datetime") return DATE_OPERATORS;
   if (fieldType === "number" || fieldType === "integer" || fieldType === "float") return NUMBER_OPERATORS;
+  if (fieldType === "boolean") return BOOLEAN_OPERATORS;
   return STRING_OPERATORS;
 }
 
@@ -47,7 +55,11 @@ function getValuePlaceholder(operator: string): string {
     case "last_n_days": return "例: 7";
     case "last_n_hours": return "例: 24";
     case "date_range": return "開始日,終了日 (例: 2024-01-01,2024-12-31)";
+    case "after": return "例: 2024-01-01";
+    case "before": return "例: 2024-12-31";
     case "range": return "最小値,最大値 (例: 100,500)";
+    case "gte": return "最小値を入力";
+    case "lte": return "最大値を入力";
     default: return "値を入力";
   }
 }
@@ -151,7 +163,21 @@ export function FilterSettings({ fields, filters, onChange }: FilterSettingsProp
 
                 {/* Value input */}
                 <div className="flex-1 min-w-0">
-                  {isDateField && filter.operator === "last_n_days" ? (
+                  {fieldType === "boolean" ? (
+                    <Select
+                      value={filter.value}
+                      onValueChange={(v) => { if (v) updateFilter(index, { value: v }); }}
+                      disabled={!filter.operator}
+                    >
+                      <SelectTrigger className="w-full text-xs h-8">
+                        <SelectValue placeholder="値を選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="true">true</SelectItem>
+                        <SelectItem value="false">false</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : isDateField && filter.operator === "last_n_days" ? (
                     <div className="flex items-center gap-1">
                       <Input
                         type="number"
@@ -202,6 +228,13 @@ export function FilterSettings({ fields, filters, onChange }: FilterSettingsProp
                         />
                       </div>
                     </div>
+                  ) : isDateField && (filter.operator === "after" || filter.operator === "before") ? (
+                    <Input
+                      type={fieldType === "datetime" ? "datetime-local" : "date"}
+                      value={filter.value}
+                      onChange={(e) => updateFilter(index, { value: e.target.value })}
+                      className="text-xs h-8"
+                    />
                   ) : (
                     <Input
                       value={filter.value}

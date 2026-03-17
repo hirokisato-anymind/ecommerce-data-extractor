@@ -13,14 +13,25 @@ from app.routers import bigquery, credentials, endpoints, export, extract, oauth
 
 @asynccontextmanager
 async def lifespan(app_instance):
-    """Start the scheduler on startup and stop it on shutdown."""
+    """Load credentials and start the scheduler on startup; stop on shutdown."""
+    import logging
+    _logger = logging.getLogger("ecommerce_data_extractor")
+
+    # Load platform credentials from Secret Manager (cloud) or .env (local)
+    # into the in-memory settings object. This MUST happen before the scheduler
+    # starts so that platform clients have access to API keys/tokens.
+    try:
+        from app.routers.credentials import load_credentials_from_storage
+        load_credentials_from_storage()
+    except Exception:
+        _logger.warning("Failed to load credentials from storage", exc_info=True)
+
     from app.core.scheduler import start_scheduler, stop_scheduler
 
     try:
         start_scheduler()
     except Exception:
-        import logging
-        logging.getLogger("ecommerce_data_extractor").warning("Scheduler failed to start", exc_info=True)
+        _logger.warning("Scheduler failed to start", exc_info=True)
     yield
     try:
         stop_scheduler()

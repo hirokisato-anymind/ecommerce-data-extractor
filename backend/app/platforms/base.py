@@ -25,8 +25,18 @@ class PlatformClient(ABC):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
-        """Extract data from endpoint. Returns {items, columns, next_cursor, total}."""
+        """Extract data from endpoint. Returns {items, columns, next_cursor, total}.
+
+        Parameters
+        ----------
+        start_date, end_date : str | None
+            ISO-8601 date strings (e.g. ``2024-01-01``) for date-range filtering.
+            Platform clients translate these into the appropriate API parameters.
+        """
         pass
 
     @abstractmethod

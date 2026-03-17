@@ -425,6 +425,9 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
           placeholder="my_table"
           className="text-sm h-9"
         />
+        <p className="text-xs text-muted-foreground">
+          データセットやテーブルが存在しない場合は、初回実行時に自動的に作成されます
+        </p>
       </div>
 
       {/* Connection Test */}

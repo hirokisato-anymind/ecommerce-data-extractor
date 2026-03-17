@@ -235,6 +235,9 @@ class YahooClient(PlatformClient):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         """Extract data from Yahoo Shopping API.
 
@@ -250,6 +253,12 @@ class YahooClient(PlatformClient):
         url = _ENDPOINT_URLS[endpoint_id]
         params = self._build_params(endpoint_id, limit, cursor)
         headers = self._build_headers(endpoint_id)
+
+        # Add date range filtering for seller order endpoints
+        if start_date and endpoint_id == "seller_orders":
+            params["StartDate"] = start_date
+        if end_date and endpoint_id == "seller_orders":
+            params["EndDate"] = end_date
 
         response = await self._http.get(url, params=params, headers=headers)
         response.raise_for_status()

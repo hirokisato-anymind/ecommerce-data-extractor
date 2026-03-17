@@ -201,3 +201,26 @@ def _reload_settings(env_values: dict[str, str]) -> None:
         attr = key.lower()
         if hasattr(settings, attr):
             object.__setattr__(settings, attr, value if value else None)
+
+
+def load_credentials_from_storage() -> None:
+    """Load credentials from Secret Manager (cloud) or .env (local) into settings.
+
+    This must be called at app startup so that the in-memory ``settings``
+    object is populated before the scheduler or any platform client tries
+    to use it.  On Cloud Run there is no ``.env`` file, so without this
+    step every ``is_configured()`` check would return False and scheduled
+    jobs would fail.
+    """
+    try:
+        env_values = _read_env()
+        if env_values:
+            _reload_settings(env_values)
+            logger.info(
+                "Loaded %d credential keys from storage into settings",
+                len(env_values),
+            )
+        else:
+            logger.info("No stored credentials found in storage")
+    except Exception as e:
+        logger.error("Failed to load credentials from storage: %s", e)

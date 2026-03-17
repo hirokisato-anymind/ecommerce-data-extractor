@@ -56,12 +56,12 @@ SCHEMAS: dict[str, dict[str, Any]] = {
         "fields": [
             # 基本情報
             {"name": "orderNumber", "type": "string", "description": "受注番号"},
-            {"name": "orderDatetime", "type": "string", "description": "注文日時"},
+            {"name": "orderDatetime", "type": "datetime", "description": "注文日時"},
             {"name": "orderProgress", "type": "integer", "description": "受注ステータス (100:注文確認待ち〜900:キャンセル確定)"},
             {"name": "orderType", "type": "integer", "description": "注文種別 (1:通常, 4:定期, 5:頒布会, 6:予約)"},
-            {"name": "shopOrderCfmDatetime", "type": "string", "description": "注文確認日時"},
-            {"name": "orderFixDatetime", "type": "string", "description": "注文確定日時"},
-            {"name": "shippingCmplRptDatetime", "type": "string", "description": "発送完了報告日時"},
+            {"name": "shopOrderCfmDatetime", "type": "datetime", "description": "注文確認日時"},
+            {"name": "orderFixDatetime", "type": "datetime", "description": "注文確定日時"},
+            {"name": "shippingCmplRptDatetime", "type": "datetime", "description": "発送完了報告日時"},
             {"name": "remarks", "type": "string", "description": "備考"},
             {"name": "memo", "type": "string", "description": "メモ"},
             # 金額
@@ -118,8 +118,8 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             {"name": "itemType", "type": "string", "description": "商品タイプ (NORMAL等)"},
             {"name": "standardPrice", "type": "integer", "description": "販売価格（先頭バリアント）"},
             {"name": "hideItem", "type": "boolean", "description": "非表示フラグ"},
-            {"name": "created", "type": "string", "description": "登録日時"},
-            {"name": "updated", "type": "string", "description": "更新日時"},
+            {"name": "created", "type": "datetime", "description": "登録日時"},
+            {"name": "updated", "type": "datetime", "description": "更新日時"},
         ],
     },
     "rms_inventory": {
@@ -127,8 +127,8 @@ SCHEMAS: dict[str, dict[str, Any]] = {
             {"name": "manageNumber", "type": "string", "description": "商品管理番号"},
             {"name": "variantId", "type": "string", "description": "バリアントID"},
             {"name": "quantity", "type": "integer", "description": "在庫数"},
-            {"name": "created", "type": "string", "description": "登録日時"},
-            {"name": "updated", "type": "string", "description": "更新日時"},
+            {"name": "created", "type": "datetime", "description": "登録日時"},
+            {"name": "updated", "type": "datetime", "description": "更新日時"},
         ],
     },
 }
@@ -179,6 +179,8 @@ class RakutenClient(PlatformClient):
         *,
         keyword: str | None = None,
         genre_id: int | str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         handlers = {
             "rms_orders": self._extract_rms_orders,
@@ -188,7 +190,8 @@ class RakutenClient(PlatformClient):
         handler = handlers.get(endpoint_id)
         if handler is None:
             raise ValueError(f"Unknown endpoint: {endpoint_id}")
-        return await handler(columns=columns, limit=limit, cursor=cursor)
+        return await handler(columns=columns, limit=limit, cursor=cursor,
+                             start_date=start_date, end_date=end_date)
 
     # ------------------------------------------------------------------
     # Auth helper
@@ -229,16 +232,24 @@ class RakutenClient(PlatformClient):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         if not self.is_configured():
             raise RuntimeError("RMS credentials are not configured")
 
         page = int(cursor) if cursor else 1
 
-        # Default: last 63 days (API max range)
+        # Use provided date range or default to last 63 days (API max range)
         now = datetime.now(JST)
-        end_dt = now.strftime("%Y-%m-%dT%H:%M:%S+0900")
-        start_dt = (now - timedelta(days=63)).strftime("%Y-%m-%dT%H:%M:%S+0900")
+        if end_date:
+            end_dt = f"{end_date}T23:59:59+0900"
+        else:
+            end_dt = now.strftime("%Y-%m-%dT%H:%M:%S+0900")
+        if start_date:
+            start_dt = f"{start_date}T00:00:00+0900"
+        else:
+            start_dt = (now - timedelta(days=63)).strftime("%Y-%m-%dT%H:%M:%S+0900")
 
         # Step 1: Search order numbers
         search_body: dict[str, Any] = {
@@ -274,17 +285,20 @@ class RakutenClient(PlatformClient):
                 "total": total or 0,
             }
 
-        # Step 2: Get order details (max 100 per request)
-        order_numbers = order_numbers[:100]
-        get_resp = await self._http.post(
-            RMS_ORDER_GET_URL,
-            json={"orderNumberList": order_numbers, "version": 7},
-            headers=self._rms_headers_post(),
-        )
-        get_resp.raise_for_status()
-        get_data = get_resp.json()
+        # Step 2: Get order details (max 100 per getOrder request, batch if needed)
+        all_get_data: list[dict] = []
+        for i in range(0, len(order_numbers), 100):
+            batch = order_numbers[i : i + 100]
+            get_resp = await self._http.post(
+                RMS_ORDER_GET_URL,
+                json={"orderNumberList": batch, "version": 7},
+                headers=self._rms_headers_post(),
+            )
+            get_resp.raise_for_status()
+            get_data = get_resp.json()
+            all_get_data.extend(get_data.get("OrderModelList", []))
 
-        raw_orders = get_data.get("OrderModelList", [])
+        raw_orders = all_get_data
         items = []
         for order in raw_orders:
             row: dict[str, Any] = {}
@@ -403,6 +417,8 @@ class RakutenClient(PlatformClient):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         if not self.is_configured():
             raise RuntimeError("RMS credentials are not configured")
@@ -467,6 +483,8 @@ class RakutenClient(PlatformClient):
         columns: list[str] | None,
         limit: int,
         cursor: str | None,
+        start_date: str | None = None,
+        end_date: str | None = None,
     ) -> dict:
         if not self.is_configured():
             raise RuntimeError("RMS credentials are not configured")

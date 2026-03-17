@@ -55,6 +55,8 @@ function Dashboard() {
   const [data, setData] = useState<ExtractResult | null>(null);
   const [configPlatform, setConfigPlatform] = useState<Platform | null>(null);
   const [filters, setFilters] = useState<FilterConfig[]>([]);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [activeStep, setActiveStep] = useState(
     Number(searchParams.get("step")) || 1
   );
@@ -132,6 +134,9 @@ function Dashboard() {
             : undefined,
         limit,
         filters: filters.length > 0 ? JSON.stringify(filters) : undefined,
+        start_date: startDate || undefined,
+        end_date: endDate || undefined,
+        fetch_all: limit > 100,
       }),
     onSuccess: (result) => {
       setData(result);
@@ -739,6 +744,55 @@ function Dashboard() {
                         filters={filters}
                         onChange={setFilters}
                       />
+                    </CardContent>
+                  </Card>
+
+                  {/* Date Range Filter */}
+                  <Card className="shadow-sm border-slate-200">
+                    <CardContent className="p-6">
+                      <div className="section-header">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4f63d2" strokeWidth="2" className="shrink-0">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+                          <line x1="16" y1="2" x2="16" y2="6" />
+                          <line x1="8" y1="2" x2="8" y2="6" />
+                          <line x1="3" y1="10" x2="21" y2="10" />
+                        </svg>
+                        <h3>日付範囲（API レベル）</h3>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 mb-3">
+                        プラットフォームAPIに直接渡す日付範囲です。空欄の場合はデフォルト期間が使用されます。
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <div>
+                          <Label className="text-xs text-slate-600">開始日</Label>
+                          <Input
+                            type="date"
+                            value={startDate}
+                            onChange={(e) => setStartDate(e.target.value)}
+                            className="text-xs h-8 w-40"
+                          />
+                        </div>
+                        <span className="text-xs text-muted-foreground mt-4">〜</span>
+                        <div>
+                          <Label className="text-xs text-slate-600">終了日</Label>
+                          <Input
+                            type="date"
+                            value={endDate}
+                            onChange={(e) => setEndDate(e.target.value)}
+                            className="text-xs h-8 w-40"
+                          />
+                        </div>
+                        {(startDate || endDate) && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-xs mt-4 text-slate-400 hover:text-red-500"
+                            onClick={() => { setStartDate(""); setEndDate(""); }}
+                          >
+                            クリア
+                          </Button>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
 
