@@ -96,6 +96,7 @@ const TRANSFER_MODE_LABELS: Record<string, string> = {
 export function JobList({ onEdit }: JobListProps) {
   const queryClient = useQueryClient();
   const [deleteTarget, setDeleteTarget] = useState<ScheduleJob | null>(null);
+  const [runningJobIds, setRunningJobIds] = useState<Set<string>>(new Set());
 
   const { data: jobs = [], isLoading, isError, error } = useQuery<ScheduleJob[]>({
     queryKey: ["schedules"],
@@ -120,9 +121,16 @@ export function JobList({ onEdit }: JobListProps) {
   });
 
   const triggerMutation = useMutation({
-    mutationFn: (id: string) => api.triggerSchedule(id),
-    onSuccess: () => {
+    mutationFn: (id: string) => {
+      setRunningJobIds((prev) => new Set(prev).add(id));
+      return api.triggerSchedule(id);
+    },
+    onSuccess: (_data, id) => {
+      setRunningJobIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+    },
+    onError: (_error, id) => {
+      setRunningJobIds((prev) => { const next = new Set(prev); next.delete(id); return next; });
     },
   });
 
@@ -272,9 +280,9 @@ export function JobList({ onEdit }: JobListProps) {
                       size="sm"
                       className="text-xs h-7 px-2"
                       onClick={() => triggerMutation.mutate(job.id)}
-                      disabled={triggerMutation.isPending}
+                      disabled={runningJobIds.has(job.id)}
                     >
-                      {triggerMutation.isPending ? "実行中..." : "今すぐ実行"}
+                      {runningJobIds.has(job.id) ? "実行中..." : "今すぐ実行"}
                     </Button>
                     <Button
                       variant="ghost"
