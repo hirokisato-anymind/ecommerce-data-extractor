@@ -66,6 +66,7 @@ def create_cloud_scheduler_job(schedule_id: str, schedule_config, enabled: bool)
             http_method=scheduler_v1.HttpMethod.POST,
             oidc_token=scheduler_v1.OidcToken(
                 service_account_email=SCHEDULER_SERVICE_ACCOUNT,
+                audience=CLOUD_RUN_URL,
             ),
         ),
         state=scheduler_v1.Job.State.ENABLED if enabled else scheduler_v1.Job.State.PAUSED,
@@ -103,6 +104,7 @@ def update_cloud_scheduler_job(schedule_id: str, schedule_config, enabled: bool)
             http_method=scheduler_v1.HttpMethod.POST,
             oidc_token=scheduler_v1.OidcToken(
                 service_account_email=SCHEDULER_SERVICE_ACCOUNT,
+                audience=CLOUD_RUN_URL,
             ),
         ),
         state=scheduler_v1.Job.State.ENABLED if enabled else scheduler_v1.Job.State.PAUSED,
