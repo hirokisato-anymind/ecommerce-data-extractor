@@ -82,15 +82,43 @@ export function CredentialsDialog({
     },
   });
 
+  const [oauthLoading, setOauthLoading] = useState(false);
+
   const handleOAuth = async () => {
     if (!platformId) return;
+    setOauthLoading(true);
+    setSaveError("");
     try {
+      // Step 1: Save credentials first so they are persisted before OAuth
+      const secretKeys = new Set(
+        (creds?.fields ?? []).filter((f) => f.secret && f.hasValue).map((f) => f.key)
+      );
+      const filtered: Record<string, string> = {};
+      for (const [k, v] of Object.entries(formValues)) {
+        if (secretKeys.has(k) && !v) continue;
+        filtered[k] = v;
+      }
+      await api.saveCredentials(platformId, filtered);
+      queryClient.invalidateQueries({ queryKey: ["credentials", platformId] });
+
+      // Step 2: Start OAuth flow
       const { authorize_url } = await api.getOAuthUrl(platformId);
-      window.open(authorize_url, "_blank", "width=600,height=700");
+      const popup = window.open(authorize_url, "_blank", "width=600,height=700");
+
+      // Step 3: Poll for completion (token saved by callback)
+      const poll = setInterval(async () => {
+        if (popup?.closed) {
+          clearInterval(poll);
+          queryClient.invalidateQueries({ queryKey: ["credentials", platformId] });
+          queryClient.invalidateQueries({ queryKey: ["platforms"] });
+          setOauthLoading(false);
+        }
+      }, 1000);
     } catch {
       setSaveError(
-        "OAuth URLの取得に失敗しました。Client IDとストアドメインを先に保存してください。"
+        "OAuth認証の開始に失敗しました。Client IDとストアドメインが正しく入力されているか確認してください。"
       );
+      setOauthLoading(false);
     }
   };
 
@@ -148,42 +176,26 @@ export function CredentialsDialog({
               <>
                 <Separator />
                 <div className="space-y-3">
-                  <h3 className="text-sm font-semibold">OAuth認証</h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold">OAuth認証</h3>
+                    {readonlyFields.some((f) => f.hasValue) ? (
+                      <Badge variant="default" className="text-[10px]">認証済み</Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-[10px]">未認証</Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    上の Client ID / Secret
-                    を保存した後、OAuth認証ボタンを押すとアクセストークンを自動取得します。
+                    下のボタンを押すと、入力済みの設定を保存した上でOAuth認証を開始します。
+                    認証完了後、アクセストークンが自動で取得・保存されます。
                   </p>
-
-                  {/* Show readonly token fields status */}
-                  {readonlyFields.map((field) => (
-                    <div
-                      key={field.key}
-                      className="flex items-center justify-between rounded-md border p-3"
-                    >
-                      <div>
-                        <span className="text-sm">{field.label}</span>
-                        <p className="text-xs text-muted-foreground">
-                          {field.hint}
-                        </p>
-                      </div>
-                      {field.hasValue ? (
-                        <Badge variant="default" className="text-[10px]">
-                          取得済
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary" className="text-[10px]">
-                          未取得
-                        </Badge>
-                      )}
-                    </div>
-                  ))}
 
                   <Button
                     variant="secondary"
                     className="w-full"
                     onClick={handleOAuth}
+                    disabled={oauthLoading}
                   >
-                    OAuth認証を開始
+                    {oauthLoading ? "認証中..." : readonlyFields.some((f) => f.hasValue) ? "OAuth再認証" : "OAuth認証を開始"}
                   </Button>
                 </div>
               </>

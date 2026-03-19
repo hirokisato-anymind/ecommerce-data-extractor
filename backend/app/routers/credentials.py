@@ -68,7 +68,7 @@ PLATFORM_KEYS: dict[str, list[dict]] = {
         {"key": "SHOPIFY_STORE_DOMAIN", "label": "ストアドメイン", "hint": "例: myshop.myshopify.com（.myshopify.com まで含む）", "secret": False},
         {"key": "SHOPIFY_CLIENT_ID", "label": "Client ID (API Key)", "hint": "Dev Dashboard > アプリ > API credentials の Client ID", "secret": False},
         {"key": "SHOPIFY_CLIENT_SECRET", "label": "Client Secret (API Secret)", "hint": "Dev Dashboard > アプリ > API credentials の Client Secret", "secret": True},
-        {"key": "SHOPIFY_ACCESS_TOKEN", "label": "Admin APIアクセストークン", "hint": "カスタムアプリ: 管理画面で発行 / パートナーアプリ: OAuth認証で取得", "secret": True},
+        {"key": "SHOPIFY_ACCESS_TOKEN", "label": "Admin APIアクセストークン", "hint": "OAuth認証で自動取得されます", "secret": True, "readonly": True},
     ],
     "rakuten": [
         {"key": "RAKUTEN_SERVICE_SECRET", "label": "RMS サービスシークレット", "hint": "RMS > 各種設定 > API設定 で確認", "secret": True},
