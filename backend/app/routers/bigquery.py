@@ -277,6 +277,56 @@ async def auth_status() -> dict:
 
 # --- BigQuery操作エンドポイント ---
 
+
+@router.get("/projects")
+async def list_projects() -> dict:
+    """認証済みユーザーがアクセスできるGCPプロジェクト一覧を返す。"""
+    from google.cloud import resourcemanager_v3
+
+    creds = _get_credentials()
+    if not creds:
+        raise HTTPException(status_code=401, detail="Google認証が必要です")
+    try:
+        client = resourcemanager_v3.ProjectsClient(credentials=creds)
+        projects = []
+        for p in client.search_projects():
+            if p.state.name == "ACTIVE":
+                projects.append({"project_id": p.project_id, "name": p.display_name})
+        return {"projects": projects}
+    except Exception as e:
+        logger.warning("プロジェクト一覧の取得に失敗: %s", e)
+        return {"projects": []}
+
+
+@router.get("/datasets")
+async def list_datasets(project_id: str) -> dict:
+    """指定プロジェクトのBigQueryデータセット一覧を返す。"""
+    try:
+        client = _get_bq_client(project_id)
+        datasets = [ds.dataset_id for ds in client.list_datasets()]
+        return {"datasets": datasets}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("データセット一覧の取得に失敗: %s", e)
+        return {"datasets": []}
+
+
+@router.get("/tables-list")
+async def list_tables_simple(project_id: str, dataset_id: str) -> dict:
+    """指定データセットのテーブル名一覧を返す。"""
+    try:
+        client = _get_bq_client(project_id)
+        table_ref = f"{project_id}.{dataset_id}"
+        tables = [t.table_id for t in client.list_tables(table_ref)]
+        return {"tables": tables}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning("テーブル一覧の取得に失敗: %s", e)
+        return {"tables": []}
+
+
 class ConnectionTestRequest(BaseModel):
     project_id: str
     dataset_id: str

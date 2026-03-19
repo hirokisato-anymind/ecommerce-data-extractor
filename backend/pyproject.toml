@@ -15,6 +15,7 @@ dependencies = [
     "google-auth",
     "google-cloud-secret-manager",
     "google-cloud-storage",
+    "google-cloud-resource-manager",
 ]
 
 [build-system]

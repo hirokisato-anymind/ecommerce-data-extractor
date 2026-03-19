@@ -56,6 +56,35 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
 
   const [customLocation, setCustomLocation] = useState(false);
 
+  // Suggestions for project/dataset/table
+  const [projects, setProjects] = useState<{ project_id: string; name: string }[]>([]);
+  const [datasets, setDatasets] = useState<string[]>([]);
+  const [tables, setTables] = useState<string[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [loadingDatasets, setLoadingDatasets] = useState(false);
+  const [loadingTables, setLoadingTables] = useState(false);
+
+  // Fetch projects when authenticated
+  useEffect(() => {
+    if (!authStatus?.authenticated) return;
+    setLoadingProjects(true);
+    api.listBigQueryProjects().then((r) => setProjects(r.projects)).catch(() => {}).finally(() => setLoadingProjects(false));
+  }, [authStatus?.authenticated]);
+
+  // Fetch datasets when project changes
+  useEffect(() => {
+    if (!config.project_id || !authStatus?.authenticated) { setDatasets([]); return; }
+    setLoadingDatasets(true);
+    api.listBigQueryDatasets(config.project_id).then((r) => setDatasets(r.datasets)).catch(() => {}).finally(() => setLoadingDatasets(false));
+  }, [config.project_id, authStatus?.authenticated]);
+
+  // Fetch tables when dataset changes
+  useEffect(() => {
+    if (!config.project_id || !config.dataset_id || !authStatus?.authenticated) { setTables([]); return; }
+    setLoadingTables(true);
+    api.listBigQueryTablesSimple(config.project_id, config.dataset_id).then((r) => setTables(r.tables)).catch(() => {}).finally(() => setLoadingTables(false));
+  }, [config.project_id, config.dataset_id, authStatus?.authenticated]);
+
   const needsKeyColumns = config.transfer_mode === "append" || config.transfer_mode === "upsert" || config.transfer_mode === "delete_in_advance";
 
   // Check if current location is a preset or custom
@@ -333,13 +362,28 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
 
       {/* Project ID */}
       <div className="space-y-1.5">
-        <Label className="text-sm font-medium text-slate-700">GCPプロジェクトID</Label>
-        <Input
-          value={config.project_id}
-          onChange={(e) => onChange({ ...config, project_id: e.target.value })}
-          placeholder="my-gcp-project"
-          className="text-sm h-9"
-        />
+        <Label className="text-sm font-medium text-slate-700">GCPプロジェクト</Label>
+        {projects.length > 0 ? (
+          <select
+            value={config.project_id || ""}
+            onChange={(e) => onChange({ ...config, project_id: e.target.value, dataset_id: "", table_id: "" })}
+            className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            <option value="">プロジェクトを選択...</option>
+            {projects.map((p) => (
+              <option key={p.project_id} value={p.project_id}>
+                {p.name} ({p.project_id})
+              </option>
+            ))}
+          </select>
+        ) : (
+          <Input
+            value={config.project_id}
+            onChange={(e) => onChange({ ...config, project_id: e.target.value })}
+            placeholder={loadingProjects ? "読み込み中..." : "my-gcp-project"}
+            className="text-sm h-9"
+          />
+        )}
       </div>
 
       {/* Location / Region */}
@@ -408,23 +452,73 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
       {/* Dataset ID */}
       <div className="space-y-1.5">
         <Label className="text-sm font-medium text-slate-700">データセット</Label>
-        <Input
-          value={config.dataset_id}
-          onChange={(e) => onChange({ ...config, dataset_id: e.target.value })}
-          placeholder="my_dataset"
-          className="text-sm h-9"
-        />
+        <div className="flex gap-2">
+          {datasets.length > 0 ? (
+            <select
+              value={config.dataset_id || ""}
+              onChange={(e) => onChange({ ...config, dataset_id: e.target.value, table_id: "" })}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">データセットを選択...</option>
+              {datasets.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
+              <option value="__new__">+ 新規データセット</option>
+            </select>
+          ) : (
+            <Input
+              value={config.dataset_id}
+              onChange={(e) => onChange({ ...config, dataset_id: e.target.value })}
+              placeholder={loadingDatasets ? "読み込み中..." : "my_dataset"}
+              className="text-sm h-9"
+            />
+          )}
+        </div>
+        {config.dataset_id === "__new__" && (
+          <Input
+            value=""
+            onChange={(e) => onChange({ ...config, dataset_id: e.target.value })}
+            placeholder="新しいデータセット名を入力"
+            className="text-sm h-9 mt-1"
+            autoFocus
+          />
+        )}
       </div>
 
       {/* Table ID */}
       <div className="space-y-1.5">
         <Label className="text-sm font-medium text-slate-700">テーブル名</Label>
-        <Input
-          value={config.table_id}
-          onChange={(e) => onChange({ ...config, table_id: e.target.value })}
-          placeholder="my_table"
-          className="text-sm h-9"
-        />
+        <div className="flex gap-2">
+          {tables.length > 0 ? (
+            <select
+              value={config.table_id || ""}
+              onChange={(e) => onChange({ ...config, table_id: e.target.value })}
+              className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <option value="">テーブルを選択...</option>
+              {tables.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+              <option value="__new__">+ 新規テーブル</option>
+            </select>
+          ) : (
+            <Input
+              value={config.table_id}
+              onChange={(e) => onChange({ ...config, table_id: e.target.value })}
+              placeholder={loadingTables ? "読み込み中..." : "my_table"}
+              className="text-sm h-9"
+            />
+          )}
+        </div>
+        {config.table_id === "__new__" && (
+          <Input
+            value=""
+            onChange={(e) => onChange({ ...config, table_id: e.target.value })}
+            placeholder="新しいテーブル名を入力"
+            className="text-sm h-9 mt-1"
+            autoFocus
+          />
+        )}
         <p className="text-xs text-muted-foreground">
           データセットやテーブルが存在しない場合は、初回実行時に自動的に作成されます
         </p>

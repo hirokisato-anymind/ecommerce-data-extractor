@@ -153,10 +153,10 @@ export function CredentialsDialog({
                 </div>
                 <Input
                   id={field.key}
-                  type={field.secret ? "password" : "text"}
+                  type={field.secret && !(formValues[field.key]) ? "text" : field.secret ? "password" : "text"}
                   placeholder={
                     field.secret && field.hasValue
-                      ? "変更する場合のみ入力"
+                      ? "••••••••••（変更する場合のみ入力）"
                       : field.hint
                   }
                   value={formValues[field.key] ?? ""}

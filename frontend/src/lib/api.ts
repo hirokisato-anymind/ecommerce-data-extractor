@@ -170,6 +170,25 @@ export const api = {
     return url.toString();
   },
 
+  // BigQuery resource lists
+  listBigQueryProjects: async () => {
+    const res = await fetch(`${API_BASE}/bigquery/projects`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ projects: { project_id: string; name: string }[] }>;
+  },
+
+  listBigQueryDatasets: async (projectId: string) => {
+    const res = await fetch(`${API_BASE}/bigquery/datasets?project_id=${encodeURIComponent(projectId)}`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ datasets: string[] }>;
+  },
+
+  listBigQueryTablesSimple: async (projectId: string, datasetId: string) => {
+    const res = await fetch(`${API_BASE}/bigquery/tables-list?project_id=${encodeURIComponent(projectId)}&dataset_id=${encodeURIComponent(datasetId)}`);
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ tables: string[] }>;
+  },
+
   // BigQuery OAuth Config
   getBigQueryOAuthConfigStatus: async () => {
     const res = await fetch(`${API_BASE}/bigquery/oauth-config-status`);
