@@ -1,19 +1,17 @@
 """OAuth callback handlers for platforms that require OAuth authorization."""
 
 import logging
-from pathlib import Path
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
+from app.routers.credentials import _read_env, _write_env, _reload_settings
 
 logger = logging.getLogger("ecommerce_data_extractor.oauth")
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
-
-ENV_PATH = Path(__file__).resolve().parent.parent.parent / ".env"
 
 SHOPIFY_SCOPES = ",".join([
     "read_products",
@@ -21,24 +19,6 @@ SHOPIFY_SCOPES = ",".join([
     "read_customers",
     "read_inventory",
 ])
-
-
-def _read_env() -> dict[str, str]:
-    values: dict[str, str] = {}
-    if ENV_PATH.exists():
-        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                k, v = line.split("=", 1)
-                values[k.strip()] = v.strip()
-    return values
-
-
-def _write_env(values: dict[str, str]) -> None:
-    lines = [f"{k}={v}" for k, v in sorted(values.items())]
-    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _update_setting(key: str, value: str) -> None:
@@ -63,7 +43,11 @@ async def shopify_authorize(request: Request) -> dict:
             detail="shopify_store_domain and shopify_client_id must be configured first",
         )
 
-    redirect_uri = str(request.base_url).rstrip("/") + "/api/oauth/shopify/callback"
+    base = str(request.base_url).rstrip("/")
+    proto = request.headers.get("x-forwarded-proto", "")
+    if proto == "https" and base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    redirect_uri = base + "/api/oauth/shopify/callback"
     auth_url = (
         f"https://{store}/admin/oauth/authorize"
         f"?client_id={client_id}"
@@ -133,7 +117,11 @@ async def yahoo_authorize(request: Request) -> dict:
     if not client_id:
         raise HTTPException(status_code=400, detail="yahoo_client_id must be configured first")
 
-    redirect_uri = str(request.base_url).rstrip("/") + "/api/oauth/yahoo/callback"
+    base = str(request.base_url).rstrip("/")
+    proto = request.headers.get("x-forwarded-proto", "")
+    if proto == "https" and base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    redirect_uri = base + "/api/oauth/yahoo/callback"
     auth_url = (
         f"{YAHOO_AUTH_URL}"
         f"?response_type=code"
@@ -146,6 +134,7 @@ async def yahoo_authorize(request: Request) -> dict:
 
 @router.get("/yahoo/callback", response_class=HTMLResponse)
 async def yahoo_callback(
+    request: Request,
     code: str = Query(...),
 ) -> HTMLResponse:
     """Handle Yahoo OAuth callback - exchange code for access token."""
@@ -154,7 +143,11 @@ async def yahoo_callback(
     if not client_id or not client_secret:
         raise HTTPException(status_code=500, detail="Yahoo client credentials not configured")
 
-    redirect_uri = "http://localhost:8000/api/oauth/yahoo/callback"
+    base = str(request.base_url).rstrip("/")
+    proto = request.headers.get("x-forwarded-proto", "")
+    if proto == "https" and base.startswith("http://"):
+        base = "https://" + base[len("http://"):]
+    redirect_uri = base + "/api/oauth/yahoo/callback"
     async with httpx.AsyncClient() as client:
         resp = await client.post(
             YAHOO_TOKEN_URL,
