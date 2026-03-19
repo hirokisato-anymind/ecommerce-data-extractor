@@ -31,6 +31,7 @@ _SM_OAUTH_CONFIG = "ecommerce-bq-oauth-config"
 _SM_TOKENS = "ecommerce-bq-tokens"
 SCOPES = [
     "https://www.googleapis.com/auth/bigquery",
+    "https://www.googleapis.com/auth/cloud-platform.read-only",
     "https://www.googleapis.com/auth/userinfo.email",
 ]
 
