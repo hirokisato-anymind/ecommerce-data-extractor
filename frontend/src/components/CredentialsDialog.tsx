@@ -59,7 +59,19 @@ export function CredentialsDialog({
   }, [open]);
 
   const saveMutation = useMutation({
-    mutationFn: () => api.saveCredentials(platformId!, formValues),
+    mutationFn: () => {
+      // Secret fields that are still empty (not changed by user) should not be sent,
+      // otherwise they would clear existing values in storage.
+      const secretKeys = new Set(
+        (creds?.fields ?? []).filter((f) => f.secret && f.hasValue).map((f) => f.key)
+      );
+      const filtered: Record<string, string> = {};
+      for (const [k, v] of Object.entries(formValues)) {
+        if (secretKeys.has(k) && !v) continue; // skip unchanged secret
+        filtered[k] = v;
+      }
+      return api.saveCredentials(platformId!, filtered);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["platforms"] });
       queryClient.invalidateQueries({ queryKey: ["credentials", platformId] });
