@@ -41,6 +41,39 @@ ENDPOINT_DEFS: list[dict[str, str]] = [
         "name": "Reports - レポート一覧",
         "description": "直近のレポート一覧（出品・注文・在庫等）",
     },
+    {
+        "id": "catalog",
+        "name": "Catalog Items - 商品カタログ",
+        "description": "商品の出品カタログ情報（ASIN・タイトル・ブランド・画像等）",
+    },
+    {
+        "id": "pricing",
+        "name": "Product Pricing - 価格情報",
+        "description": "商品の価格・Buy Box・オファー情報",
+    },
+    {
+        "id": "sales_metrics",
+        "name": "Sales Metrics - 販売指標",
+        "description": "日次売上指標（販売数・注文数・平均単価・売上合計）",
+    },
+    {
+        "id": "fba_shipments",
+        "name": "FBA Inbound Shipments - FBA納品",
+        "description": "FBA納品プランの一覧とステータス",
+    },
+    {
+        "id": "brand_analytics",
+        "name": "Brand Analytics Reports - ブランド分析",
+        "description": "ブランド分析レポート一覧（検索キーワード・マーケットバスケット等）",
+    },
+    {
+        "id": "direct_fulfillment",
+        "name": "Merchant Fulfillment Shipments - 自社出荷",
+        "description": "自社出荷（MFN）の出荷ラベル・追跡情報",
+    },
+    # NOTE: 購入者とのコミュニケーション (Buyer Messaging) and フィードバック依頼
+    # (Solicitations) are primarily write operations (sendInvoice, createProductReviewAndSellerFeedbackSolicitation).
+    # SP-API does not expose read-only listing endpoints for these, so they are omitted.
 ]
 
 # ---------------------------------------------------------------------------
@@ -142,6 +175,74 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "createdTime", "type": "datetime", "description": "レポート作成日時"},
         ],
     },
+    "catalog": {
+        "fields": [
+            {"name": "asin", "type": "string", "description": "ASIN"},
+            {"name": "title", "type": "string", "description": "商品タイトル"},
+            {"name": "brand", "type": "string", "description": "ブランド名"},
+            {"name": "color", "type": "string", "description": "カラー"},
+            {"name": "size", "type": "string", "description": "サイズ"},
+            {"name": "modelNumber", "type": "string", "description": "モデル番号"},
+            {"name": "salesRank", "type": "integer", "description": "売れ筋ランキング"},
+            {"name": "imageUrl", "type": "string", "description": "メイン画像URL"},
+            {"name": "itemClassification", "type": "string", "description": "商品分類 (BASE_PRODUCT/VARIATION_PARENT等)"},
+        ],
+    },
+    "pricing": {
+        "fields": [
+            {"name": "asin", "type": "string", "description": "ASIN"},
+            {"name": "sellerSku", "type": "string", "description": "出品者SKU"},
+            {"name": "listingPrice", "type": "number", "description": "出品価格"},
+            {"name": "shippingPrice", "type": "number", "description": "配送料"},
+            {"name": "landedPrice", "type": "number", "description": "最終購入価格 (価格+配送料)"},
+            {"name": "points", "type": "number", "description": "ポイント付与額"},
+            {"name": "buyBoxPrice", "type": "number", "description": "Buy Box価格"},
+            {"name": "numberOfOffers", "type": "integer", "description": "オファー数"},
+            {"name": "condition", "type": "string", "description": "コンディション (New/Used等)"},
+        ],
+    },
+    "sales_metrics": {
+        "fields": [
+            {"name": "date", "type": "string", "description": "日付 (YYYY-MM-DD)"},
+            {"name": "unitCount", "type": "integer", "description": "販売ユニット数"},
+            {"name": "orderItemCount", "type": "integer", "description": "注文アイテム数"},
+            {"name": "orderCount", "type": "integer", "description": "注文数"},
+            {"name": "averageUnitPrice", "type": "number", "description": "平均単価"},
+            {"name": "totalSales_amount", "type": "number", "description": "売上合計金額"},
+            {"name": "totalSales_currency", "type": "string", "description": "通貨コード"},
+        ],
+    },
+    "fba_shipments": {
+        "fields": [
+            {"name": "shipmentId", "type": "string", "description": "納品プランID"},
+            {"name": "shipmentName", "type": "string", "description": "納品プラン名"},
+            {"name": "shipmentStatus", "type": "string", "description": "ステータス (WORKING/SHIPPED/RECEIVING/CLOSED等)"},
+            {"name": "destinationFulfillmentCenterId", "type": "string", "description": "納品先FC ID"},
+            {"name": "labelPrepType", "type": "string", "description": "ラベル準備タイプ"},
+            {"name": "areCasesRequired", "type": "boolean", "description": "ケース梱包必須"},
+        ],
+    },
+    "brand_analytics": {
+        "fields": [
+            {"name": "reportId", "type": "string", "description": "レポートID"},
+            {"name": "reportType", "type": "string", "description": "レポートタイプ"},
+            {"name": "processingStatus", "type": "string", "description": "処理ステータス (IN_QUEUE/IN_PROGRESS/DONE等)"},
+            {"name": "dataStartTime", "type": "datetime", "description": "データ開始日時"},
+            {"name": "dataEndTime", "type": "datetime", "description": "データ終了日時"},
+            {"name": "createdTime", "type": "datetime", "description": "レポート作成日時"},
+        ],
+    },
+    "direct_fulfillment": {
+        "fields": [
+            {"name": "shipmentId", "type": "string", "description": "出荷ID"},
+            {"name": "amazonOrderId", "type": "string", "description": "Amazon注文ID"},
+            {"name": "shipmentStatus", "type": "string", "description": "出荷ステータス"},
+            {"name": "trackingNumber", "type": "string", "description": "追跡番号"},
+            {"name": "carrier", "type": "string", "description": "配送業者"},
+            {"name": "shipDate", "type": "datetime", "description": "出荷日"},
+            {"name": "deliveryDate", "type": "datetime", "description": "配達日"},
+        ],
+    },
 }
 
 ENDPOINT_PATHS: dict[str, str] = {
@@ -149,6 +250,12 @@ ENDPOINT_PATHS: dict[str, str] = {
     "finances": "/finances/v0/financialEvents",
     "inventory": "/fba/inventory/v1/summaries",
     "reports": "/reports/2021-06-30/reports",
+    "catalog": "/catalog/2022-04-01/items",
+    "pricing": "/products/pricing/v0/price",
+    "sales_metrics": "/sales/v1/orderMetrics",
+    "fba_shipments": "/fba/inbound/v0/shipments",
+    "brand_analytics": "/reports/2021-06-30/reports",
+    "direct_fulfillment": "/mfn/v0/shipments",
 }
 
 
@@ -322,6 +429,146 @@ def _flatten_report(report: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _flatten_catalog_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a Catalog Items API response item (2022-04-01 version)."""
+    asin = item.get("asin")
+
+    # summaries[0] contains title, brand, classification, etc.
+    summaries = item.get("summaries") or []
+    summary = summaries[0] if summaries else {}
+
+    # images[0] for main image
+    images = item.get("images") or []
+    image_url = None
+    if images:
+        # images is a list of image sets per marketplace; take first variant
+        image_set = images[0] if images else {}
+        image_list = image_set.get("images") or []
+        if image_list:
+            image_url = image_list[0].get("link")
+
+    # salesRanks
+    sales_ranks = item.get("salesRanks") or []
+    sales_rank = None
+    if sales_ranks:
+        rank_list = sales_ranks[0].get("displayGroupRanks") or sales_ranks[0].get("classificationRanks") or []
+        if rank_list:
+            sales_rank = rank_list[0].get("rank")
+
+    # attributes for color, size, modelNumber
+    attributes = item.get("attributes") or {}
+    color_attr = attributes.get("color") or []
+    size_attr = attributes.get("size") or []
+    model_attr = attributes.get("model_number") or attributes.get("part_number") or []
+
+    return {
+        "asin": asin,
+        "title": summary.get("itemName"),
+        "brand": summary.get("brand"),
+        "color": color_attr[0].get("value") if color_attr else None,
+        "size": size_attr[0].get("value") if size_attr else None,
+        "modelNumber": model_attr[0].get("value") if model_attr else None,
+        "salesRank": sales_rank,
+        "imageUrl": image_url,
+        "itemClassification": summary.get("itemClassification"),
+    }
+
+
+def _flatten_pricing(product: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a Product Pricing API response product."""
+    asin = product.get("ASIN")
+    status = product.get("status")
+
+    # The Product element contains offers/pricing
+    product_body = product.get("Product", {})
+    offers = product_body.get("Offers") or []
+    offer = offers[0] if offers else {}
+
+    buying_price = offer.get("BuyingPrice") or {}
+    listing_price = buying_price.get("ListingPrice") or {}
+    shipping_price = buying_price.get("Shipping") or {}
+    landed_price = buying_price.get("LandedPrice") or {}
+    points = offer.get("RegularPrice", {})  # fallback
+
+    # Points from offer
+    points_obj = buying_price.get("Points") or {}
+
+    # Competitive pricing for BuyBox
+    comp_pricing = product_body.get("CompetitivePricing") or {}
+    comp_prices = comp_pricing.get("CompetitivePrices") or []
+    buy_box_price = None
+    for cp in comp_prices:
+        if cp.get("belongsToRequester"):
+            price_obj = cp.get("Price", {}).get("LandedPrice") or cp.get("Price", {}).get("ListingPrice") or {}
+            buy_box_price = price_obj.get("Amount")
+            break
+
+    # Number of offer listings
+    offer_listings = comp_pricing.get("NumberOfOfferListings") or []
+    total_offers = 0
+    for ol in offer_listings:
+        total_offers += int(ol.get("Count", 0))
+
+    return {
+        "asin": asin,
+        "sellerSku": offer.get("SellerSKU"),
+        "listingPrice": listing_price.get("Amount"),
+        "shippingPrice": shipping_price.get("Amount"),
+        "landedPrice": landed_price.get("Amount"),
+        "points": points_obj.get("PointsMonetaryValue", {}).get("Amount"),
+        "buyBoxPrice": buy_box_price,
+        "numberOfOffers": total_offers,
+        "condition": offer.get("SubCondition") or offer.get("ItemCondition"),
+    }
+
+
+def _flatten_sales_metric(metric: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a Sales orderMetrics response entry."""
+    interval = metric.get("interval", "")
+    # interval is ISO 8601 like "2024-01-01T00:00:00--2024-01-02T00:00:00"
+    date_str = interval.split("T")[0] if interval else None
+
+    total_sales = metric.get("totalSales") or {}
+    avg_unit_price = metric.get("averageUnitPrice") or {}
+
+    return {
+        "date": date_str,
+        "unitCount": metric.get("unitCount"),
+        "orderItemCount": metric.get("orderItemCount"),
+        "orderCount": metric.get("orderCount"),
+        "averageUnitPrice": avg_unit_price.get("amount"),
+        "totalSales_amount": total_sales.get("amount"),
+        "totalSales_currency": total_sales.get("currencyCode"),
+    }
+
+
+def _flatten_fba_shipment(shipment: dict[str, Any]) -> dict[str, Any]:
+    """Flatten an FBA Inbound Shipment."""
+    return {
+        "shipmentId": shipment.get("ShipmentId"),
+        "shipmentName": shipment.get("ShipmentName"),
+        "shipmentStatus": shipment.get("ShipmentStatus"),
+        "destinationFulfillmentCenterId": shipment.get("DestinationFulfillmentCenterId"),
+        "labelPrepType": shipment.get("LabelPrepType"),
+        "areCasesRequired": shipment.get("AreCasesRequired"),
+    }
+
+
+def _flatten_mfn_shipment(shipment: dict[str, Any]) -> dict[str, Any]:
+    """Flatten a Merchant Fulfillment (MFN) shipment."""
+    label = shipment.get("Label") or {}
+    return {
+        "shipmentId": shipment.get("ShipmentId"),
+        "amazonOrderId": shipment.get("AmazonOrderId"),
+        "shipmentStatus": shipment.get("ShipmentStatus"),
+        "trackingNumber": shipment.get("TrackingId"),
+        "carrier": shipment.get("ShippingService", {}).get("CarrierName")
+                   if isinstance(shipment.get("ShippingService"), dict) else None,
+        "shipDate": shipment.get("ShipDate"),
+        "deliveryDate": shipment.get("EstimatedDeliveryDate"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # AmazonClient
 # ---------------------------------------------------------------------------
@@ -413,6 +660,12 @@ class AmazonClient(PlatformClient):
             "finances": self._extract_finances,
             "inventory": self._extract_inventory,
             "reports": self._extract_reports,
+            "catalog": self._extract_catalog,
+            "pricing": self._extract_pricing,
+            "sales_metrics": self._extract_sales_metrics,
+            "fba_shipments": self._extract_fba_shipments,
+            "brand_analytics": self._extract_brand_analytics,
+            "direct_fulfillment": self._extract_direct_fulfillment,
         }
         handler = handlers.get(endpoint_id)
         if handler is None:
@@ -593,6 +846,244 @@ class AmazonClient(PlatformClient):
 
         all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["reports"]["fields"]]
         next_cursor = payload.get("nextToken")
+
+        return {
+            "items": records,
+            "columns": columns or all_columns,
+            "next_cursor": next_cursor,
+            "total": len(records),
+        }
+
+    # -- Catalog Items --------------------------------------------------------
+
+    async def _extract_catalog(
+        self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
+    ) -> dict:
+        params: dict[str, Any] = {
+            "marketplaceIds": self._marketplace_id,
+            "includedData": "attributes,identifiers,images,salesRanks,summaries",
+            "pageSize": min(limit, 20),
+        }
+        if cursor:
+            params["pageToken"] = cursor
+
+        body = await self._sp_api_get("/catalog/2022-04-01/items", params=params)
+        raw_items = body.get("items", [])
+
+        records = [_flatten_catalog_item(item) for item in raw_items]
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["catalog"]["fields"]]
+        pagination = body.get("pagination", {})
+        next_cursor = pagination.get("nextToken")
+
+        return {
+            "items": records,
+            "columns": columns or all_columns,
+            "next_cursor": next_cursor,
+            "total": len(records),
+        }
+
+    # -- Pricing --------------------------------------------------------------
+
+    async def _extract_pricing(
+        self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
+    ) -> dict:
+        # First, fetch ASINs from catalog/inventory to price against
+        asins: list[str] = []
+        try:
+            inv_body = await self._sp_api_get("/fba/inventory/v1/summaries", params={
+                "marketplaceIds": self._marketplace_id,
+                "granularityType": "Marketplace",
+                "granularityId": self._marketplace_id,
+            })
+            inv_payload = inv_body.get("payload", inv_body)
+            for item in inv_payload.get("inventorySummaries", []):
+                asin = item.get("asin")
+                if asin and asin not in asins:
+                    asins.append(asin)
+                if len(asins) >= min(limit, 20):
+                    break
+        except Exception:
+            logger.warning("Failed to fetch ASINs from inventory for pricing lookup")
+
+        if not asins:
+            return {
+                "items": [],
+                "columns": columns or [f["name"] for f in ENDPOINT_SCHEMAS["pricing"]["fields"]],
+                "next_cursor": None,
+                "total": 0,
+            }
+
+        params: dict[str, Any] = {
+            "MarketplaceId": self._marketplace_id,
+            "ItemType": "Asin",
+            "Asins": ",".join(asins),
+        }
+
+        body = await self._sp_api_get("/products/pricing/v0/price", params=params)
+        payload = body.get("payload", body)
+        raw_items = payload if isinstance(payload, list) else payload.get("prices", [])
+
+        records = [_flatten_pricing(item) for item in raw_items]
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["pricing"]["fields"]]
+
+        return {
+            "items": records,
+            "columns": columns or all_columns,
+            "next_cursor": None,  # Pricing API does not paginate
+            "total": len(records),
+        }
+
+    # -- Sales Metrics --------------------------------------------------------
+
+    async def _extract_sales_metrics(
+        self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
+    ) -> dict:
+        if start_date:
+            interval_start = f"{start_date}T00:00:00Z"
+        else:
+            interval_start = (
+                datetime.now(timezone.utc) - timedelta(days=30)
+            ).strftime("%Y-%m-%dT00:00:00Z")
+        if end_date:
+            interval_end = f"{end_date}T23:59:59Z"
+        else:
+            interval_end = datetime.now(timezone.utc).strftime("%Y-%m-%dT23:59:59Z")
+
+        params: dict[str, Any] = {
+            "marketplaceIds": self._marketplace_id,
+            "interval": f"{interval_start}--{interval_end}",
+            "granularity": "Day",
+        }
+
+        body = await self._sp_api_get("/sales/v1/orderMetrics", params=params)
+        payload = body.get("payload", body)
+        raw_items = payload if isinstance(payload, list) else payload.get("orderMetrics", [])
+
+        records = [_flatten_sales_metric(item) for item in raw_items[:limit]]
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["sales_metrics"]["fields"]]
+
+        return {
+            "items": records,
+            "columns": columns or all_columns,
+            "next_cursor": None,  # Sales metrics returns all days in the interval
+            "total": len(records),
+        }
+
+    # -- FBA Inbound Shipments ------------------------------------------------
+
+    async def _extract_fba_shipments(
+        self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
+    ) -> dict:
+        params: dict[str, Any] = {
+            "MarketplaceId": self._marketplace_id,
+            "ShipmentStatusList": "WORKING,SHIPPED,RECEIVING,CLOSED",
+            "QueryType": "SHIPMENT",
+        }
+        if cursor:
+            params["NextToken"] = cursor
+
+        body = await self._sp_api_get("/fba/inbound/v0/shipments", params=params)
+        payload = body.get("payload", body)
+        shipment_data = payload.get("ShipmentData", [])
+
+        records = [_flatten_fba_shipment(s) for s in shipment_data[:limit]]
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["fba_shipments"]["fields"]]
+        next_cursor = payload.get("NextToken")
+
+        return {
+            "items": records,
+            "columns": columns or all_columns,
+            "next_cursor": next_cursor,
+            "total": len(records),
+        }
+
+    # -- Brand Analytics (via Reports API) ------------------------------------
+
+    async def _extract_brand_analytics(
+        self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
+    ) -> dict:
+        """Fetch brand analytics reports using the Reports API filtered to BA report types."""
+        params: dict[str, Any] = {
+            "marketplaceIds": self._marketplace_id,
+            "pageSize": min(limit, 100),
+            "reportTypes": ",".join([
+                "GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT",
+                "GET_BRAND_ANALYTICS_MARKET_BASKET_REPORT",
+                "GET_BRAND_ANALYTICS_REPEAT_PURCHASE_REPORT",
+                "GET_BRAND_ANALYTICS_ALTERNATE_ITEM_REPORT",
+                "GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT",
+            ]),
+        }
+        if cursor:
+            params["nextToken"] = cursor
+
+        body = await self._sp_api_get("/reports/2021-06-30/reports", params=params)
+        payload = body.get("payload", body)
+        raw_items = payload.get("reports", [])
+
+        records = [_flatten_report(item) for item in raw_items]
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["brand_analytics"]["fields"]]
+        next_cursor = payload.get("nextToken")
+
+        return {
+            "items": records,
+            "columns": columns or all_columns,
+            "next_cursor": next_cursor,
+            "total": len(records),
+        }
+
+    # -- Direct Fulfillment / Merchant Fulfillment ----------------------------
+
+    async def _extract_direct_fulfillment(
+        self, *, columns: list[str] | None, limit: int, cursor: str | None,
+        start_date: str | None = None, end_date: str | None = None,
+    ) -> dict:
+        """Fetch Merchant Fulfillment (MFN) shipments for seller direct fulfillment."""
+        params: dict[str, Any] = {
+            "MarketplaceId": self._marketplace_id,
+            "MaxResultsPerPage": min(limit, 100),
+        }
+        if start_date:
+            params["ShipDateCreatedAfter"] = f"{start_date}T00:00:00Z"
+        else:
+            params["ShipDateCreatedAfter"] = (
+                datetime.now(timezone.utc) - timedelta(days=30)
+            ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        if end_date:
+            params["ShipDateCreatedBefore"] = f"{end_date}T23:59:59Z"
+        if cursor:
+            params["NextToken"] = cursor
+
+        body = await self._sp_api_get("/mfn/v0/shipments", params=params)
+        payload = body.get("payload", body)
+        raw_items = payload.get("ShipmentList", [])
+
+        records = [_flatten_mfn_shipment(s) for s in raw_items[:limit]]
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["direct_fulfillment"]["fields"]]
+        next_cursor = payload.get("NextToken")
 
         return {
             "items": records,
