@@ -85,15 +85,17 @@ async def shopify_callback(
     data = resp.json()
     access_token = data.get("access_token", "")
 
-    # Save to .env and reload in-memory
-    env_values = _read_env()
-    env_values["SHOPIFY_ACCESS_TOKEN"] = access_token
-    env_values["SHOPIFY_STORE_DOMAIN"] = shop
-    _write_env(env_values)
-    _update_setting("SHOPIFY_ACCESS_TOKEN", access_token)
-    _update_setting("SHOPIFY_STORE_DOMAIN", shop)
-
-    logger.info("Shopify OAuth completed for shop: %s", shop)
+    # Save to Secret Manager (cloud) or .env (local) and reload in-memory
+    try:
+        env_values = _read_env()
+        env_values["SHOPIFY_ACCESS_TOKEN"] = access_token
+        env_values["SHOPIFY_STORE_DOMAIN"] = shop
+        _write_env(env_values)
+        _reload_settings(env_values)
+        logger.info("Shopify OAuth completed for shop: %s", shop)
+    except Exception as e:
+        logger.exception("Failed to save Shopify OAuth token: %s", e)
+        raise HTTPException(status_code=500, detail=f"トークンの保存に失敗しました: {e}")
 
     return HTMLResponse(content="""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px">
