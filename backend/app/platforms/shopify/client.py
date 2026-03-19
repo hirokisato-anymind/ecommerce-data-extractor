@@ -21,12 +21,19 @@ query Products($limit: Int!, $cursor: String, $query: String) {
         id
         title
         description
+        descriptionHtml
+        handle
         vendor
         productType
         status
         tags
+        publishedAt
         createdAt
         updatedAt
+        totalInventory
+        tracksInventory
+        isGiftCard
+        hasOnlyDefaultVariant
         variants(first: 10) {
           edges {
             node {
@@ -56,11 +63,68 @@ query Orders($limit: Int!, $cursor: String, $query: String) {
         id
         name
         email
+        phone
+        cancelledAt
+        cancelReason
+        closedAt
+        confirmationNumber
+        discountCode
+        discountCodes
+        processedAt
+        sourceName
+        subtotalLineItemsQuantity
+        tags
+        taxesIncluded
+        test
+        totalWeight
+        note
         totalPriceSet {
           shopMoney {
             amount
             currencyCode
           }
+        }
+        subtotalPriceSet {
+          shopMoney {
+            amount
+          }
+        }
+        totalShippingPriceSet {
+          shopMoney {
+            amount
+          }
+        }
+        totalTaxSet {
+          shopMoney {
+            amount
+          }
+        }
+        totalDiscountsSet {
+          shopMoney {
+            amount
+          }
+        }
+        totalRefundedSet {
+          shopMoney {
+            amount
+          }
+        }
+        shippingAddress {
+          address1
+          address2
+          city
+          province
+          country
+          zip
+          phone
+          name
+        }
+        billingAddress {
+          address1
+          city
+          province
+          country
+          zip
         }
         financialStatus
         fulfillmentStatus
@@ -93,11 +157,30 @@ query Customers($limit: Int!, $cursor: String, $query: String) {
         id
         firstName
         lastName
+        displayName
         email
         phone
+        locale
+        note
+        numberOfOrders
         ordersCount
         totalSpent
+        verifiedEmail
+        taxExempt
         state
+        tags
+        amountSpent {
+          amount
+          currencyCode
+        }
+        defaultAddress {
+          address1
+          city
+          province
+          country
+          zip
+          phone
+        }
         createdAt
         updatedAt
       }
@@ -118,10 +201,15 @@ query InventoryItems($limit: Int!, $cursor: String) {
         id
         sku
         tracked
+        updatedAt
         inventoryLevels(first: 10) {
           edges {
             node {
               available
+              quantities(names: ["available", "committed", "damaged", "incoming", "on_hand", "quality_control", "reserved", "safety_stock"]) {
+                name
+                quantity
+              }
               location {
                 name
               }
@@ -150,12 +238,19 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "id", "type": "string", "description": "Product GID"},
             {"name": "title", "type": "string", "description": "Product title"},
             {"name": "description", "type": "string", "description": "Product description"},
+            {"name": "descriptionHtml", "type": "string", "description": "Product description in HTML"},
+            {"name": "handle", "type": "string", "description": "URL-friendly product handle"},
             {"name": "vendor", "type": "string", "description": "Product vendor"},
             {"name": "productType", "type": "string", "description": "Product type"},
             {"name": "status", "type": "string", "description": "Product status (ACTIVE, ARCHIVED, DRAFT)"},
             {"name": "tags", "type": "list", "description": "Product tags"},
+            {"name": "publishedAt", "type": "datetime", "description": "Publication timestamp"},
             {"name": "createdAt", "type": "datetime", "description": "Creation timestamp"},
             {"name": "updatedAt", "type": "datetime", "description": "Last update timestamp"},
+            {"name": "totalInventory", "type": "integer", "description": "Total inventory across all variants"},
+            {"name": "tracksInventory", "type": "boolean", "description": "Whether inventory is tracked"},
+            {"name": "isGiftCard", "type": "boolean", "description": "Whether the product is a gift card"},
+            {"name": "hasOnlyDefaultVariant", "type": "boolean", "description": "Whether the product has only the default variant"},
             {"name": "variants", "type": "list", "description": "Product variants (id, title, sku, price, inventoryQuantity)"},
         ],
     },
@@ -164,8 +259,41 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "id", "type": "string", "description": "Order GID"},
             {"name": "name", "type": "string", "description": "Order name (e.g. #1001)"},
             {"name": "email", "type": "string", "description": "Customer email"},
+            {"name": "phone", "type": "string", "description": "Customer phone"},
+            {"name": "cancelledAt", "type": "datetime", "description": "Cancellation timestamp"},
+            {"name": "cancelReason", "type": "string", "description": "Reason for cancellation"},
+            {"name": "closedAt", "type": "datetime", "description": "Closed timestamp"},
+            {"name": "confirmationNumber", "type": "string", "description": "Order confirmation number"},
+            {"name": "discountCode", "type": "string", "description": "Primary discount code"},
+            {"name": "discountCodes", "type": "list", "description": "All discount codes applied"},
+            {"name": "processedAt", "type": "datetime", "description": "Processing timestamp"},
+            {"name": "sourceName", "type": "string", "description": "Source of the order (e.g. web, pos)"},
+            {"name": "subtotalLineItemsQuantity", "type": "integer", "description": "Total quantity of line items"},
+            {"name": "tags", "type": "list", "description": "Order tags"},
+            {"name": "taxesIncluded", "type": "boolean", "description": "Whether taxes are included in prices"},
+            {"name": "test", "type": "boolean", "description": "Whether this is a test order"},
+            {"name": "totalWeight", "type": "number", "description": "Total weight of the order"},
+            {"name": "note", "type": "string", "description": "Order note"},
             {"name": "totalAmount", "type": "number", "description": "Total price amount"},
             {"name": "totalCurrency", "type": "string", "description": "Total price currency code"},
+            {"name": "subtotalAmount", "type": "number", "description": "Subtotal price amount"},
+            {"name": "shippingAmount", "type": "number", "description": "Total shipping price amount"},
+            {"name": "taxAmount", "type": "number", "description": "Total tax amount"},
+            {"name": "discountAmount", "type": "number", "description": "Total discounts amount"},
+            {"name": "refundedAmount", "type": "number", "description": "Total refunded amount"},
+            {"name": "shippingName", "type": "string", "description": "Shipping address name"},
+            {"name": "shippingAddress1", "type": "string", "description": "Shipping address line 1"},
+            {"name": "shippingAddress2", "type": "string", "description": "Shipping address line 2"},
+            {"name": "shippingCity", "type": "string", "description": "Shipping city"},
+            {"name": "shippingProvince", "type": "string", "description": "Shipping province/state"},
+            {"name": "shippingCountry", "type": "string", "description": "Shipping country"},
+            {"name": "shippingZip", "type": "string", "description": "Shipping zip/postal code"},
+            {"name": "shippingPhone", "type": "string", "description": "Shipping phone number"},
+            {"name": "billingAddress1", "type": "string", "description": "Billing address line 1"},
+            {"name": "billingCity", "type": "string", "description": "Billing city"},
+            {"name": "billingProvince", "type": "string", "description": "Billing province/state"},
+            {"name": "billingCountry", "type": "string", "description": "Billing country"},
+            {"name": "billingZip", "type": "string", "description": "Billing zip/postal code"},
             {"name": "financialStatus", "type": "string", "description": "Financial status"},
             {"name": "fulfillmentStatus", "type": "string", "description": "Fulfillment status"},
             {"name": "createdAt", "type": "datetime", "description": "Creation timestamp"},
@@ -178,11 +306,26 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "id", "type": "string", "description": "Customer GID"},
             {"name": "firstName", "type": "string", "description": "First name"},
             {"name": "lastName", "type": "string", "description": "Last name"},
+            {"name": "displayName", "type": "string", "description": "Display name"},
             {"name": "email", "type": "string", "description": "Email address"},
             {"name": "phone", "type": "string", "description": "Phone number"},
+            {"name": "locale", "type": "string", "description": "Customer locale"},
+            {"name": "note", "type": "string", "description": "Note about the customer"},
+            {"name": "numberOfOrders", "type": "integer", "description": "Number of orders (string-based count)"},
             {"name": "ordersCount", "type": "integer", "description": "Total number of orders"},
             {"name": "totalSpent", "type": "number", "description": "Total amount spent"},
+            {"name": "verifiedEmail", "type": "boolean", "description": "Whether the email is verified"},
+            {"name": "taxExempt", "type": "boolean", "description": "Whether the customer is tax exempt"},
             {"name": "state", "type": "string", "description": "Customer account state"},
+            {"name": "tags", "type": "list", "description": "Customer tags"},
+            {"name": "amountSpent", "type": "number", "description": "Amount spent (from amountSpent MoneyV2)"},
+            {"name": "amountSpentCurrency", "type": "string", "description": "Currency of amount spent"},
+            {"name": "defaultAddress1", "type": "string", "description": "Default address line 1"},
+            {"name": "defaultCity", "type": "string", "description": "Default address city"},
+            {"name": "defaultProvince", "type": "string", "description": "Default address province/state"},
+            {"name": "defaultCountry", "type": "string", "description": "Default address country"},
+            {"name": "defaultZip", "type": "string", "description": "Default address zip/postal code"},
+            {"name": "defaultPhone", "type": "string", "description": "Default address phone"},
             {"name": "createdAt", "type": "datetime", "description": "Creation timestamp"},
             {"name": "updatedAt", "type": "datetime", "description": "Last update timestamp"},
         ],
@@ -192,7 +335,8 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "id", "type": "string", "description": "Inventory item GID"},
             {"name": "sku", "type": "string", "description": "SKU"},
             {"name": "tracked", "type": "boolean", "description": "Whether inventory is tracked"},
-            {"name": "inventoryLevels", "type": "list", "description": "Inventory levels per location (available, locationName)"},
+            {"name": "updatedAt", "type": "datetime", "description": "Last update timestamp"},
+            {"name": "inventoryLevels", "type": "list", "description": "Inventory levels per location (available, quantities, locationName)"},
         ],
     },
 }
@@ -247,14 +391,83 @@ def _flatten_edges(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
+def _extract_shop_money_amount(record: dict[str, Any], key: str) -> Any:
+    """Extract the shopMoney.amount value from a MoneySet field."""
+    money_set = record.get(key)
+    if isinstance(money_set, dict):
+        shop_money = money_set.get("shopMoney", {})
+        return shop_money.get("amount")
+    return None
+
+
 def _flatten_order_record(record: dict[str, Any]) -> dict[str, Any]:
-    """Flatten order-specific nested structures (totalPriceSet)."""
+    """Flatten order-specific nested structures (MoneyV2 sets, addresses)."""
     flat = dict(record)
+
+    # totalPriceSet
     total_price_set = flat.pop("totalPriceSet", None)
     if isinstance(total_price_set, dict):
         shop_money = total_price_set.get("shopMoney", {})
         flat["totalAmount"] = shop_money.get("amount")
         flat["totalCurrency"] = shop_money.get("currencyCode")
+
+    # Other MoneyV2 sets → flat amount fields
+    for gql_key, flat_key in [
+        ("subtotalPriceSet", "subtotalAmount"),
+        ("totalShippingPriceSet", "shippingAmount"),
+        ("totalTaxSet", "taxAmount"),
+        ("totalDiscountsSet", "discountAmount"),
+        ("totalRefundedSet", "refundedAmount"),
+    ]:
+        money_set = flat.pop(gql_key, None)
+        if isinstance(money_set, dict):
+            shop_money = money_set.get("shopMoney", {})
+            flat[flat_key] = shop_money.get("amount")
+
+    # Shipping address
+    shipping = flat.pop("shippingAddress", None)
+    if isinstance(shipping, dict):
+        flat["shippingName"] = shipping.get("name")
+        flat["shippingAddress1"] = shipping.get("address1")
+        flat["shippingAddress2"] = shipping.get("address2")
+        flat["shippingCity"] = shipping.get("city")
+        flat["shippingProvince"] = shipping.get("province")
+        flat["shippingCountry"] = shipping.get("country")
+        flat["shippingZip"] = shipping.get("zip")
+        flat["shippingPhone"] = shipping.get("phone")
+
+    # Billing address
+    billing = flat.pop("billingAddress", None)
+    if isinstance(billing, dict):
+        flat["billingAddress1"] = billing.get("address1")
+        flat["billingCity"] = billing.get("city")
+        flat["billingProvince"] = billing.get("province")
+        flat["billingCountry"] = billing.get("country")
+        flat["billingZip"] = billing.get("zip")
+
+    return flat
+
+
+def _flatten_customer_record(record: dict[str, Any]) -> dict[str, Any]:
+    """Flatten customer-specific nested structures (amountSpent, defaultAddress)."""
+    flat = dict(record)
+
+    # amountSpent MoneyV2
+    amount_spent = flat.pop("amountSpent", None)
+    if isinstance(amount_spent, dict):
+        flat["amountSpent"] = amount_spent.get("amount")
+        flat["amountSpentCurrency"] = amount_spent.get("currencyCode")
+
+    # defaultAddress
+    default_addr = flat.pop("defaultAddress", None)
+    if isinstance(default_addr, dict):
+        flat["defaultAddress1"] = default_addr.get("address1")
+        flat["defaultCity"] = default_addr.get("city")
+        flat["defaultProvince"] = default_addr.get("province")
+        flat["defaultCountry"] = default_addr.get("country")
+        flat["defaultZip"] = default_addr.get("zip")
+        flat["defaultPhone"] = default_addr.get("phone")
+
     return flat
 
 
@@ -278,6 +491,8 @@ def _post_flatten(endpoint_id: str, records: list[dict[str, Any]]) -> list[dict[
     """Apply endpoint-specific post-flattening transformations."""
     if endpoint_id == "orders":
         return [_flatten_order_record(r) for r in records]
+    if endpoint_id == "customers":
+        return [_flatten_customer_record(r) for r in records]
     if endpoint_id == "inventory":
         return [_flatten_inventory_record(r) for r in records]
     return records
