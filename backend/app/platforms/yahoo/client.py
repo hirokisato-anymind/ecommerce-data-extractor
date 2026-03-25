@@ -2,6 +2,8 @@ import logging
 import xml.etree.ElementTree as ET
 from typing import Any
 
+import httpx
+
 from app.config import settings
 from app.core.rate_limiter import yahoo_limiter, retry_on_429
 from app.core.read_only import ReadOnlyHttpClient
@@ -313,11 +315,65 @@ class YahooClient(PlatformClient):
         "PayMethod", "ShipStatus", "BillFirstName",
     ]
 
+    _YAHOO_TOKEN_URL = "https://auth.login.yahoo.co.jp/yconnect/v2/token"
+
     def __init__(self) -> None:
         self._client_id: str = settings.yahoo_client_id or ""
+        self._client_secret: str = settings.yahoo_client_secret or ""
         self._access_token: str = settings.yahoo_access_token or ""
+        self._refresh_token: str = settings.yahoo_refresh_token or ""
         self._seller_id: str = settings.yahoo_seller_id or ""
         self._http = ReadOnlyHttpClient(platform="yahoo")
+
+    # -- Token refresh -----------------------------------------------------
+
+    async def _ensure_valid_token(self) -> None:
+        """Refresh the access token using the refresh token if available.
+
+        Yahoo access tokens expire after ~1 hour. When a 401 occurs, we
+        attempt a token refresh before retrying the request.
+        """
+        if not self._refresh_token or not self._client_id or not self._client_secret:
+            return
+
+        logger.info("Refreshing Yahoo access token")
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
+                self._YAHOO_TOKEN_URL,
+                data={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self._refresh_token,
+                    "client_id": self._client_id,
+                    "client_secret": self._client_secret,
+                },
+            )
+
+        if resp.status_code != 200:
+            logger.error("Yahoo token refresh failed: %d %s", resp.status_code, resp.text)
+            raise PermissionError(
+                "Yahoo アクセストークンの更新に失敗しました。再認証してください。"
+            )
+
+        data = resp.json()
+        self._access_token = data["access_token"]
+        # Update in-memory settings so other code sees the new token
+        object.__setattr__(settings, "yahoo_access_token", self._access_token)
+        if data.get("refresh_token"):
+            self._refresh_token = data["refresh_token"]
+            object.__setattr__(settings, "yahoo_refresh_token", self._refresh_token)
+
+        # Persist to storage so scheduled jobs also get the new token
+        try:
+            from app.routers.credentials import _read_env, _write_env
+            env_values = _read_env()
+            env_values["YAHOO_ACCESS_TOKEN"] = self._access_token
+            if data.get("refresh_token"):
+                env_values["YAHOO_REFRESH_TOKEN"] = self._refresh_token
+            _write_env(env_values)
+        except Exception as e:
+            logger.warning("Could not persist refreshed Yahoo token: %s", e)
+
+        logger.info("Yahoo access token refreshed successfully")
 
     # -- PlatformClient interface ------------------------------------------
 
@@ -350,21 +406,11 @@ class YahooClient(PlatformClient):
 
         await yahoo_limiter.acquire()
 
-        # Route to the appropriate extraction method
-        if endpoint_id == "seller_orders":
-            raw_items = await self._extract_orders(
-                limit=limit, cursor=cursor,
-                start_date=start_date, end_date=end_date,
-            )
-        elif endpoint_id == "seller_items":
-            raw_items = await self._extract_seller_items(
-                limit=limit, cursor=cursor, keyword=keyword,
-            )
-        else:
-            raw_items = await self._extract_json(
-                endpoint_id=endpoint_id, limit=limit, cursor=cursor,
-                keyword=keyword,
-            )
+        # Attempt extraction; on 401, refresh token and retry once
+        raw_items = await self._extract_with_retry(
+            endpoint_id=endpoint_id, limit=limit, cursor=cursor,
+            start_date=start_date, end_date=end_date, keyword=keyword,
+        )
 
         # Flatten each item to the expected schema fields
         records = [_flatten_item(item, endpoint_id) for item in raw_items]
@@ -405,6 +451,57 @@ class YahooClient(PlatformClient):
         return False
 
     # -- Private extraction methods ----------------------------------------
+
+    async def _extract_with_retry(
+        self,
+        *,
+        endpoint_id: str,
+        limit: int,
+        cursor: str | None,
+        start_date: str | None,
+        end_date: str | None,
+        keyword: str | None,
+    ) -> list[dict[str, Any]]:
+        """Run extraction, auto-refreshing the token on 401."""
+        try:
+            return await self._do_extract(
+                endpoint_id=endpoint_id, limit=limit, cursor=cursor,
+                start_date=start_date, end_date=end_date, keyword=keyword,
+            )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401 and endpoint_id in _SELLER_ENDPOINTS:
+                await self._ensure_valid_token()
+                return await self._do_extract(
+                    endpoint_id=endpoint_id, limit=limit, cursor=cursor,
+                    start_date=start_date, end_date=end_date, keyword=keyword,
+                )
+            raise
+
+    async def _do_extract(
+        self,
+        *,
+        endpoint_id: str,
+        limit: int,
+        cursor: str | None,
+        start_date: str | None,
+        end_date: str | None,
+        keyword: str | None,
+    ) -> list[dict[str, Any]]:
+        """Route to the appropriate extraction method."""
+        if endpoint_id == "seller_orders":
+            return await self._extract_orders(
+                limit=limit, cursor=cursor,
+                start_date=start_date, end_date=end_date,
+            )
+        elif endpoint_id == "seller_items":
+            return await self._extract_seller_items(
+                limit=limit, cursor=cursor, keyword=keyword,
+            )
+        else:
+            return await self._extract_json(
+                endpoint_id=endpoint_id, limit=limit, cursor=cursor,
+                keyword=keyword,
+            )
 
     async def _extract_orders(
         self,
