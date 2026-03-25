@@ -139,9 +139,24 @@ async def yahoo_authorize(request: Request) -> dict:
 @router.get("/yahoo/callback", response_class=HTMLResponse)
 async def yahoo_callback(
     request: Request,
-    code: str = Query(...),
+    code: str = Query(None),
+    error: str = Query(None),
+    error_description: str = Query(None),
 ) -> HTMLResponse:
     """Handle Yahoo OAuth callback - exchange code for access token."""
+    if error or not code:
+        detail = error_description or error or "認証が拒否されました"
+        logger.error("Yahoo OAuth error: %s - %s", error, error_description)
+        return HTMLResponse(
+            status_code=400,
+            content=f"""
+            <html><body style="font-family:sans-serif;text-align:center;padding:60px">
+                <h2>Yahoo!ショッピング 認証エラー</h2>
+                <p style="color:red">{detail}</p>
+                <p>アプリの設定を確認して再度お試しください。</p>
+            </body></html>
+            """,
+        )
     client_id = settings.yahoo_client_id
     client_secret = settings.yahoo_client_secret
     if not client_id or not client_secret:
