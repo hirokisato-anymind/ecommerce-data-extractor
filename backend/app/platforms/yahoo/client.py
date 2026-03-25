@@ -1,4 +1,5 @@
 import logging
+import xml.etree.ElementTree as ET
 from typing import Any
 
 from app.config import settings
@@ -20,12 +21,12 @@ ENDPOINT_DEFS: list[dict[str, str]] = [
     },
     {
         "id": "category_ranking",
-        "name": "CategoryRanking API - カテゴリランキング",
-        "description": "Yahoo!ショッピングカテゴリ別ランキングAPI。",
+        "name": "HighRatingTrendRanking API - 高評価トレンドランキング",
+        "description": "Yahoo!ショッピング高評価トレンドランキングAPI。",
     },
     {
         "id": "seller_items",
-        "name": "StoreItemList API - 出店者商品一覧",
+        "name": "MyItemList API - 出店者商品一覧",
         "description": "出店者の商品一覧を取得します。アクセストークンが必要です。",
     },
     {
@@ -42,50 +43,50 @@ ENDPOINT_DEFS: list[dict[str, str]] = [
 ENDPOINT_SCHEMAS: dict[str, dict] = {
     "item_search": {
         "fields": [
-            {"name": "name", "type": "string", "description": "商品名"},
-            {"name": "description", "type": "string", "description": "商品説明"},
-            {"name": "price", "type": "integer", "description": "価格"},
-            {"name": "url", "type": "string", "description": "商品ページURL"},
-            {"name": "imageUrl", "type": "string", "description": "商品画像URL"},
-            {"name": "reviewAverage", "type": "number", "description": "レビュー平均評価"},
-            {"name": "reviewCount", "type": "integer", "description": "レビュー数"},
-            {"name": "shopName", "type": "string", "description": "ストア名"},
-            {"name": "shopUrl", "type": "string", "description": "ストアURL"},
-            {"name": "janCode", "type": "string", "description": "JANコード"},
-            {"name": "brand", "type": "string", "description": "ブランド名"},
+            {"name": "name", "type": "string", "description": "商品名", "bq_type": "STRING"},
+            {"name": "description", "type": "string", "description": "商品説明", "bq_type": "STRING"},
+            {"name": "price", "type": "integer", "description": "価格", "bq_type": "INTEGER"},
+            {"name": "url", "type": "string", "description": "商品ページURL", "bq_type": "STRING"},
+            {"name": "imageUrl", "type": "string", "description": "商品画像URL", "bq_type": "STRING"},
+            {"name": "reviewAverage", "type": "number", "description": "レビュー平均評価", "bq_type": "FLOAT"},
+            {"name": "reviewCount", "type": "integer", "description": "レビュー数", "bq_type": "INTEGER"},
+            {"name": "shopName", "type": "string", "description": "ストア名", "bq_type": "STRING"},
+            {"name": "shopUrl", "type": "string", "description": "ストアURL", "bq_type": "STRING"},
+            {"name": "janCode", "type": "string", "description": "JANコード", "bq_type": "STRING"},
+            {"name": "brand", "type": "string", "description": "ブランド名", "bq_type": "STRING"},
         ],
     },
     "category_ranking": {
         "fields": [
-            {"name": "rank", "type": "integer", "description": "ランキング順位"},
-            {"name": "name", "type": "string", "description": "商品名"},
-            {"name": "price", "type": "integer", "description": "価格"},
-            {"name": "url", "type": "string", "description": "商品ページURL"},
-            {"name": "imageUrl", "type": "string", "description": "商品画像URL"},
-            {"name": "reviewAverage", "type": "number", "description": "レビュー平均評価"},
-            {"name": "reviewCount", "type": "integer", "description": "レビュー数"},
-            {"name": "shopName", "type": "string", "description": "ストア名"},
+            {"name": "rank", "type": "integer", "description": "ランキング順位", "bq_type": "INTEGER"},
+            {"name": "name", "type": "string", "description": "商品名", "bq_type": "STRING"},
+            {"name": "price", "type": "integer", "description": "価格", "bq_type": "INTEGER"},
+            {"name": "url", "type": "string", "description": "商品ページURL", "bq_type": "STRING"},
+            {"name": "imageUrl", "type": "string", "description": "商品画像URL", "bq_type": "STRING"},
+            {"name": "reviewAverage", "type": "number", "description": "レビュー平均評価", "bq_type": "FLOAT"},
+            {"name": "reviewCount", "type": "integer", "description": "レビュー数", "bq_type": "INTEGER"},
+            {"name": "shopName", "type": "string", "description": "ストア名", "bq_type": "STRING"},
         ],
     },
     "seller_items": {
         "fields": [
-            {"name": "itemCode", "type": "string", "description": "商品コード"},
-            {"name": "title", "type": "string", "description": "商品タイトル"},
-            {"name": "price", "type": "integer", "description": "販売価格"},
-            {"name": "originalPrice", "type": "integer", "description": "定価"},
-            {"name": "availability", "type": "string", "description": "在庫状況"},
-            {"name": "updateTime", "type": "datetime", "description": "更新日時"},
+            {"name": "itemCode", "type": "string", "description": "商品コード", "bq_type": "STRING"},
+            {"name": "title", "type": "string", "description": "商品タイトル", "bq_type": "STRING"},
+            {"name": "price", "type": "integer", "description": "販売価格", "bq_type": "INTEGER"},
+            {"name": "originalPrice", "type": "integer", "description": "定価", "bq_type": "INTEGER"},
+            {"name": "availability", "type": "string", "description": "在庫状況", "bq_type": "STRING"},
+            {"name": "updateTime", "type": "datetime", "description": "更新日時", "bq_type": "TIMESTAMP"},
         ],
     },
     "seller_orders": {
         "fields": [
-            {"name": "orderId", "type": "string", "description": "注文ID"},
-            {"name": "orderTime", "type": "datetime", "description": "注文日時"},
-            {"name": "orderStatus", "type": "string", "description": "注文ステータス"},
-            {"name": "totalPrice", "type": "integer", "description": "合計金額"},
-            {"name": "paymentMethod", "type": "string", "description": "支払方法"},
-            {"name": "shipStatus", "type": "string", "description": "配送ステータス"},
-            {"name": "buyerName", "type": "string", "description": "購入者名"},
+            {"name": "orderId", "type": "string", "description": "注文ID", "bq_type": "STRING"},
+            {"name": "orderTime", "type": "datetime", "description": "注文日時", "bq_type": "TIMESTAMP"},
+            {"name": "orderStatus", "type": "string", "description": "注文ステータス", "bq_type": "STRING"},
+            {"name": "totalPrice", "type": "integer", "description": "合計金額", "bq_type": "INTEGER"},
+            {"name": "paymentMethod", "type": "string", "description": "支払方法", "bq_type": "STRING"},
+            {"name": "shipStatus", "type": "string", "description": "配送ステータス", "bq_type": "STRING"},
+            {"name": "buyerName", "type": "string", "description": "購入者名", "bq_type": "STRING"},
         ],
     },
 }
@@ -96,9 +97,9 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
 
 _ENDPOINT_URLS: dict[str, str] = {
     "item_search": "https://shopping.yahooapis.jp/ShoppingWebService/V3/itemSearch",
-    "category_ranking": "https://shopping.yahooapis.jp/ShoppingWebService/V3/categoryRanking",
-    "seller_items": "https://circus.shopping.yahooapis.jp/ShopWebService/V1/storeItemList",
-    "seller_orders": "https://circus.shopping.yahooapis.jp/ShopWebService/V1/orderList",
+    "category_ranking": "https://shopping.yahooapis.jp/ShoppingWebService/V1/highRatingTrendRanking",
+    "seller_items": "https://circus.shopping.yahooapis.jp/ShoppingWebService/V1/myItemList",
+    "seller_orders": "https://circus.shopping.yahooapis.jp/ShoppingWebService/V1/orderList",
 }
 
 # Endpoints that require seller authentication (Bearer token)
@@ -107,13 +108,112 @@ _SELLER_ENDPOINTS = {"seller_items", "seller_orders"}
 # Endpoints that use public appid-based authentication
 _PUBLIC_ENDPOINTS = {"item_search", "category_ranking"}
 
-# Yahoo API response root keys for extracting item lists
+# Endpoints that return JSON (public V3 APIs)
+_JSON_ENDPOINTS = {"item_search"}
+
+# Endpoints that return JSON (V1 public with output=json)
+_JSON_OUTPUT_ENDPOINTS = {"category_ranking"}
+
+# Yahoo API response root keys for extracting item lists from JSON responses
 _RESPONSE_ROOT_KEYS: dict[str, list[str]] = {
     "item_search": ["hits"],
-    "category_ranking": ["RankingData"],
-    "seller_items": ["ResultSet", "Result", "Item"],
-    "seller_orders": ["ResultSet", "Result", "Order"],
+    "category_ranking": ["ranking_data"],
 }
+
+
+# ---------------------------------------------------------------------------
+# XML helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_order_list_xml(
+    seller_id: str,
+    fields: list[str],
+    *,
+    limit: int = 50,
+    start: int = 1,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> str:
+    """Build the XML request body for the orderList API.
+
+    The Yahoo orderList API requires a POST with an XML body containing
+    search conditions, field selection, and pagination parameters.
+
+    Date format expected by the API: YYYYMMDDHHmmss
+    """
+    field_csv = ",".join(fields)
+
+    condition_xml = ""
+    if start_date:
+        # Convert ISO date (2026-03-20) to API format (20260320000000)
+        date_str = start_date.replace("-", "") + "000000"
+        condition_xml += f"      <OrderTimeFrom>{date_str}</OrderTimeFrom>\n"
+    if end_date:
+        date_str = end_date.replace("-", "") + "235959"
+        condition_xml += f"      <OrderTimeTo>{date_str}</OrderTimeTo>\n"
+
+    # Default condition: if no dates specified, search last 30 days
+    if not condition_xml:
+        condition_xml = "      <IsActive>true</IsActive>\n"
+
+    return (
+        "<Req>\n"
+        "  <Search>\n"
+        f"    <Result>{limit}</Result>\n"
+        f"    <Start>{start}</Start>\n"
+        "    <Sort>+order_time</Sort>\n"
+        "    <Condition>\n"
+        f"{condition_xml}"
+        "    </Condition>\n"
+        f"    <Field>{field_csv}</Field>\n"
+        "  </Search>\n"
+        f"  <SellerId>{seller_id}</SellerId>\n"
+        "</Req>"
+    )
+
+
+def _parse_xml_orders(xml_text: str) -> list[dict[str, Any]]:
+    """Parse the XML response from orderList and extract order records."""
+    root = ET.fromstring(xml_text)
+
+    # Find all Order elements (handle namespace if present)
+    ns = ""
+    if root.tag.startswith("{"):
+        ns = root.tag.split("}")[0] + "}"
+
+    orders: list[dict[str, Any]] = []
+
+    for order_el in root.iter(f"{ns}Order"):
+        record: dict[str, Any] = {}
+        for child in order_el:
+            tag = child.tag.replace(ns, "")
+            record[tag] = child.text
+        if record:
+            orders.append(record)
+
+    return orders
+
+
+def _parse_xml_items(xml_text: str) -> list[dict[str, Any]]:
+    """Parse the XML response from myItemList and extract item records."""
+    root = ET.fromstring(xml_text)
+
+    ns = ""
+    if root.tag.startswith("{"):
+        ns = root.tag.split("}")[0] + "}"
+
+    items: list[dict[str, Any]] = []
+
+    for item_el in root.iter(f"{ns}Item"):
+        record: dict[str, Any] = {}
+        for child in item_el:
+            tag = child.tag.replace(ns, "")
+            record[tag] = child.text
+        if record:
+            items.append(record)
+
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -145,13 +245,7 @@ def _extract_items(body: dict[str, Any], endpoint_id: str) -> list[dict[str, Any
 
 
 def _flatten_item(raw: dict[str, Any], endpoint_id: str) -> dict[str, Any]:
-    """Flatten a single raw item from the Yahoo API response.
-
-    Yahoo item search results nest item data under an '_item' or 'Item' key
-    in some cases. This normalizes the structure to a flat dict with the
-    expected field names.
-    """
-    # Item search results sometimes wrap item data
+    """Flatten a single raw item from the Yahoo API response."""
     if endpoint_id == "item_search":
         # V3 itemSearch returns flat hit objects directly
         return {
@@ -183,11 +277,11 @@ def _flatten_item(raw: dict[str, Any], endpoint_id: str) -> dict[str, Any]:
     if endpoint_id == "seller_items":
         return {
             "itemCode": raw.get("ItemCode") or raw.get("itemCode"),
-            "title": raw.get("Title") or raw.get("title"),
+            "title": raw.get("Title") or raw.get("title") or raw.get("Name") or raw.get("name"),
             "price": raw.get("Price") or raw.get("price"),
             "originalPrice": raw.get("OriginalPrice") or raw.get("originalPrice"),
-            "availability": raw.get("Availability") or raw.get("availability"),
-            "updateTime": raw.get("UpdateTime") or raw.get("updateTime"),
+            "availability": raw.get("Availability") or raw.get("availability") or raw.get("SubCode") or raw.get("Display"),
+            "updateTime": raw.get("UpdateTime") or raw.get("updateTime") or raw.get("EditingTime"),
         }
 
     if endpoint_id == "seller_orders":
@@ -196,9 +290,9 @@ def _flatten_item(raw: dict[str, Any], endpoint_id: str) -> dict[str, Any]:
             "orderTime": raw.get("OrderTime") or raw.get("orderTime"),
             "orderStatus": raw.get("OrderStatus") or raw.get("orderStatus"),
             "totalPrice": raw.get("TotalPrice") or raw.get("totalPrice"),
-            "paymentMethod": raw.get("PaymentMethod") or raw.get("paymentMethod"),
+            "paymentMethod": raw.get("PayMethod") or raw.get("PaymentMethod") or raw.get("paymentMethod"),
             "shipStatus": raw.get("ShipStatus") or raw.get("shipStatus"),
-            "buyerName": raw.get("BuyerName") or raw.get("buyerName"),
+            "buyerName": raw.get("BillFirstName") or raw.get("BuyerName") or raw.get("buyerName"),
         }
 
     return raw
@@ -212,6 +306,12 @@ def _flatten_item(raw: dict[str, Any], endpoint_id: str) -> dict[str, Any]:
 class YahooClient(PlatformClient):
     platform_id: str = "yahoo"
     platform_name: str = "Yahoo!ショッピング"
+
+    # Order fields requested from the orderList API
+    _ORDER_FIELDS = [
+        "OrderId", "OrderTime", "OrderStatus", "TotalPrice",
+        "PayMethod", "ShipStatus", "BillFirstName",
+    ]
 
     def __init__(self) -> None:
         self._client_id: str = settings.yahoo_client_id or ""
@@ -239,41 +339,32 @@ class YahooClient(PlatformClient):
         *,
         start_date: str | None = None,
         end_date: str | None = None,
+        keyword: str | None = None,
     ) -> dict:
-        """Extract data from Yahoo Shopping API.
-
-        1. Build GET request URL and params for the endpoint.
-        2. Send request via ReadOnlyHttpClient.get().
-        3. Parse JSON response and extract item list.
-        4. Flatten items and filter to requested columns.
-        5. Return ``{items, columns, next_cursor, total}``.
-        """
+        """Extract data from Yahoo Shopping API."""
         if endpoint_id not in _ENDPOINT_URLS:
             raise ValueError(f"Unknown endpoint: {endpoint_id}")
 
-        url = _ENDPOINT_URLS[endpoint_id]
-        params = self._build_params(endpoint_id, limit, cursor)
-        headers = self._build_headers(endpoint_id)
-
-        # Add date range filtering for seller order endpoints
-        if start_date and endpoint_id == "seller_orders":
-            params["StartDate"] = start_date
-        if end_date and endpoint_id == "seller_orders":
-            params["EndDate"] = end_date
+        if endpoint_id == "item_search" and not keyword:
+            raise ValueError("item_search requires a search keyword (検索キーワードを入力してください)")
 
         await yahoo_limiter.acquire()
 
-        async def _do_get():
-            resp = await self._http.get(url, params=params, headers=headers)
-            resp.raise_for_status()
-            return resp
-
-        response = await retry_on_429(_do_get)
-
-        body = response.json()
-
-        # Extract raw items from the nested response structure
-        raw_items = _extract_items(body, endpoint_id)
+        # Route to the appropriate extraction method
+        if endpoint_id == "seller_orders":
+            raw_items = await self._extract_orders(
+                limit=limit, cursor=cursor,
+                start_date=start_date, end_date=end_date,
+            )
+        elif endpoint_id == "seller_items":
+            raw_items = await self._extract_seller_items(
+                limit=limit, cursor=cursor, keyword=keyword,
+            )
+        else:
+            raw_items = await self._extract_json(
+                endpoint_id=endpoint_id, limit=limit, cursor=cursor,
+                keyword=keyword,
+            )
 
         # Flatten each item to the expected schema fields
         records = [_flatten_item(item, endpoint_id) for item in raw_items]
@@ -300,13 +391,7 @@ class YahooClient(PlatformClient):
         }
 
     def is_configured(self) -> bool:
-        """Check if required credentials are set.
-
-        Public APIs (item_search, category_ranking) need yahoo_client_id.
-        Seller APIs (seller_items, seller_orders) also need access_token
-        and seller_id.
-        """
-        # At minimum, public APIs require client_id
+        """Check if required credentials are set."""
         if not self._client_id:
             return False
         return True
@@ -319,32 +404,112 @@ class YahooClient(PlatformClient):
             return bool(self._client_id and self._access_token and self._seller_id)
         return False
 
+    # -- Private extraction methods ----------------------------------------
+
+    async def _extract_orders(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> list[dict[str, Any]]:
+        """Extract orders via POST + XML body."""
+        url = _ENDPOINT_URLS["seller_orders"]
+        start = int(cursor) if cursor else 1
+        headers = {
+            "Authorization": f"Bearer {self._access_token}",
+            "Content-Type": "application/xml; charset=utf-8",
+        }
+
+        xml_body = _build_order_list_xml(
+            seller_id=self._seller_id,
+            fields=self._ORDER_FIELDS,
+            limit=limit,
+            start=start,
+            start_date=start_date,
+            end_date=end_date,
+        )
+
+        async def _do_post():
+            resp = await self._http.post(
+                url, content=xml_body, headers=headers,
+            )
+            resp.raise_for_status()
+            return resp
+
+        response = await retry_on_429(_do_post)
+        return _parse_xml_orders(response.text)
+
+    async def _extract_seller_items(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        keyword: str | None,
+    ) -> list[dict[str, Any]]:
+        """Extract seller items via GET with XML response."""
+        url = _ENDPOINT_URLS["seller_items"]
+        start = int(cursor) if cursor else 1
+        headers = {"Authorization": f"Bearer {self._access_token}"}
+
+        params: dict[str, Any] = {
+            "seller_id": self._seller_id,
+            "start": start,
+            "results": limit,
+        }
+        if keyword:
+            params["query"] = keyword
+
+        async def _do_get():
+            resp = await self._http.get(url, params=params, headers=headers)
+            resp.raise_for_status()
+            return resp
+
+        response = await retry_on_429(_do_get)
+        return _parse_xml_items(response.text)
+
+    async def _extract_json(
+        self,
+        *,
+        endpoint_id: str,
+        limit: int,
+        cursor: str | None,
+        keyword: str | None,
+    ) -> list[dict[str, Any]]:
+        """Extract data from JSON-returning endpoints (item_search, category_ranking)."""
+        url = _ENDPOINT_URLS[endpoint_id]
+        params = self._build_params(endpoint_id, limit, cursor, keyword=keyword)
+        headers = self._build_headers(endpoint_id)
+
+        async def _do_get():
+            resp = await self._http.get(url, params=params, headers=headers)
+            resp.raise_for_status()
+            return resp
+
+        response = await retry_on_429(_do_get)
+        body = response.json()
+        return _extract_items(body, endpoint_id)
+
     # -- Private helpers ---------------------------------------------------
 
     def _build_params(
-        self, endpoint_id: str, limit: int, cursor: str | None
+        self, endpoint_id: str, limit: int, cursor: str | None, *, keyword: str | None = None
     ) -> dict[str, Any]:
-        """Build query parameters for a Yahoo API request."""
-        params: dict[str, Any] = {"output": "json"}
+        """Build query parameters for JSON API endpoints."""
+        params: dict[str, Any] = {}
         start = int(cursor) if cursor else 1
 
         if endpoint_id == "item_search":
             params["appid"] = self._client_id
             params["results"] = min(limit, 50)
             params["start"] = start
+            params["query"] = keyword if keyword else ""
 
         elif endpoint_id == "category_ranking":
             params["appid"] = self._client_id
-            # category_id is optional; could be added via extra params in the future
-
-        elif endpoint_id == "seller_items":
-            params["seller_id"] = self._seller_id
-            params["start"] = start
-            params["results"] = limit
-
-        elif endpoint_id == "seller_orders":
-            params["seller_id"] = self._seller_id
-            # StartDate and EndDate can be added via extra params in the future
+            params["offset"] = start
+            params["limit"] = min(limit, 100)
 
         return params
 

@@ -96,12 +96,16 @@ class ReadOnlyHttpClient:
         url: str,
         *,
         json: dict[str, Any] | None = None,
+        content: str | bytes | None = None,
         headers: dict[str, str] | None = None,
     ) -> httpx.Response:
         """Perform a read-only POST request with URL validation and audit logging.
 
-        Some APIs (e.g. Rakuten RMS order search) require POST for read-only
-        queries. URL is still validated against the platform allowlist.
+        Some APIs (e.g. Rakuten RMS order search, Yahoo orderList) require POST
+        for read-only queries. URL is still validated against the platform
+        allowlist.
+
+        Use ``json`` for JSON payloads or ``content`` for raw bodies (e.g. XML).
         """
         if not validate_url(self.platform, url):
             raise PermissionError(
@@ -114,7 +118,9 @@ class ReadOnlyHttpClient:
             url,
         )
 
-        response = await self._client.post(url, json=json, headers=headers)
+        response = await self._client.post(
+            url, json=json, content=content, headers=headers
+        )
 
         logger.info(
             "RESPONSE | platform=%s | url=%s | status=%d",
