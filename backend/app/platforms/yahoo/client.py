@@ -36,6 +36,11 @@ ENDPOINT_DEFS: list[dict[str, str]] = [
         "name": "OrderList API - 出店者注文一覧",
         "description": "出店者の注文一覧を取得します。アクセストークンが必要です。",
     },
+    {
+        "id": "seller_order_items",
+        "name": "OrderInfo API - 注文明細",
+        "description": "注文の商品明細を取得します。orderListで取得した注文IDごとにorderInfoを呼び出します。",
+    },
 ]
 
 # ---------------------------------------------------------------------------
@@ -156,6 +161,25 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "sellerId", "type": "string", "description": "出店者（ストア）ID", "bq_type": "STRING"},
         ],
     },
+    "seller_order_items": {
+        "fields": [
+            {"name": "orderId", "type": "string", "description": "注文ID", "bq_type": "STRING"},
+            {"name": "orderTime", "type": "datetime", "description": "注文日時", "bq_type": "TIMESTAMP"},
+            {"name": "lineId", "type": "integer", "description": "明細行ID", "bq_type": "INTEGER"},
+            {"name": "itemId", "type": "string", "description": "商品ID", "bq_type": "STRING"},
+            {"name": "title", "type": "string", "description": "商品名", "bq_type": "STRING"},
+            {"name": "subCode", "type": "string", "description": "商品サブコード", "bq_type": "STRING"},
+            {"name": "unitPrice", "type": "integer", "description": "商品単価（税込）", "bq_type": "INTEGER"},
+            {"name": "quantity", "type": "integer", "description": "数量", "bq_type": "INTEGER"},
+            {"name": "itemTaxRatio", "type": "integer", "description": "商品税率", "bq_type": "INTEGER"},
+            {"name": "jan", "type": "string", "description": "JANコード", "bq_type": "STRING"},
+            {"name": "productId", "type": "string", "description": "メーカー品番", "bq_type": "STRING"},
+            {"name": "categoryId", "type": "integer", "description": "カテゴリコード", "bq_type": "INTEGER"},
+            {"name": "couponDiscount", "type": "integer", "description": "クーポン割引額", "bq_type": "INTEGER"},
+            {"name": "originalPrice", "type": "integer", "description": "クーポン適用前価格", "bq_type": "INTEGER"},
+            {"name": "sellerId", "type": "string", "description": "出店者ID", "bq_type": "STRING"},
+        ],
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -167,10 +191,11 @@ _ENDPOINT_URLS: dict[str, str] = {
     "category_ranking": "https://shopping.yahooapis.jp/ShoppingWebService/V1/highRatingTrendRanking",
     "seller_items": "https://circus.shopping.yahooapis.jp/ShoppingWebService/V1/myItemList",
     "seller_orders": "https://circus.shopping.yahooapis.jp/ShoppingWebService/V1/orderList",
+    "seller_order_items": "https://circus.shopping.yahooapis.jp/ShoppingWebService/V1/orderInfo",
 }
 
 # Endpoints that require seller authentication (Bearer token)
-_SELLER_ENDPOINTS = {"seller_items", "seller_orders"}
+_SELLER_ENDPOINTS = {"seller_items", "seller_orders", "seller_order_items"}
 
 # Endpoints that use public appid-based authentication
 _PUBLIC_ENDPOINTS = {"item_search", "category_ranking"}
@@ -301,6 +326,63 @@ def _parse_xml_items(xml_text: str) -> list[dict[str, Any]]:
     return items
 
 
+def _parse_order_info_items(xml_text: str, order_id: str) -> list[dict[str, Any]]:
+    """Parse the XML response from orderInfo and extract item records."""
+    root = ET.fromstring(xml_text)
+
+    ns = ""
+    if root.tag.startswith("{"):
+        ns = root.tag.split("}")[0] + "}"
+
+    # orderInfo のレスポンスから注文レベル情報を取得
+    order_time = None
+    seller_id = None
+    for el in root.iter(f"{ns}OrderTime"):
+        order_time = el.text
+        break
+    for el in root.iter(f"{ns}SellerId"):
+        seller_id = el.text
+        break
+
+    _MAP = {
+        "orderId": order_id,
+        "orderTime": order_time,
+    }
+
+    _ITEM_FIELD_MAP = {
+        "lineId": "LineId",
+        "itemId": "ItemId",
+        "title": "Title",
+        "subCode": "SubCode",
+        "unitPrice": "UnitPrice",
+        "quantity": "Quantity",
+        "itemTaxRatio": "ItemTaxRatio",
+        "jan": "Jan",
+        "productId": "ProductId",
+        "categoryId": "CategoryId",
+        "couponDiscount": "CouponDiscount",
+        "originalPrice": "OriginalPrice",
+    }
+
+    items: list[dict[str, Any]] = []
+    for item_el in root.iter(f"{ns}Item"):
+        record: dict[str, Any] = dict(_MAP)
+        record["sellerId"] = seller_id
+
+        # Item 要素の直接の子要素からフィールドを抽出
+        child_map = {}
+        for child in item_el:
+            tag = child.tag.replace(ns, "")
+            child_map[tag] = child.text
+
+        for camel, pascal in _ITEM_FIELD_MAP.items():
+            record[camel] = child_map.get(pascal)
+
+        items.append(record)
+
+    return items
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -420,6 +502,10 @@ def _flatten_item(raw: dict[str, Any], endpoint_id: str) -> dict[str, Any]:
             "sellerId": "SellerId",
         }
         return {camel: raw.get(pascal) for camel, pascal in _MAP.items()}
+
+    if endpoint_id == "seller_order_items":
+        # orderInfo のレスポンスは既に _parse_order_info_items で camelCase に変換済み
+        return raw
 
     return raw
 
@@ -679,7 +765,12 @@ class YahooClient(PlatformClient):
         keyword: str | None,
     ) -> list[dict[str, Any]]:
         """Route to the appropriate extraction method."""
-        if endpoint_id == "seller_orders":
+        if endpoint_id == "seller_order_items":
+            return await self._extract_order_items(
+                limit=limit, cursor=cursor,
+                start_date=start_date, end_date=end_date,
+            )
+        elif endpoint_id == "seller_orders":
             return await self._extract_orders(
                 limit=limit, cursor=cursor,
                 start_date=start_date, end_date=end_date,
@@ -739,6 +830,79 @@ class YahooClient(PlatformClient):
         if not orders:
             logger.warning("orderList returned 0 orders. Response: %s", response.text[:1000])
         return orders
+
+    _ORDER_INFO_FIELDS = [
+        "OrderId", "OrderTime",
+        "LineId", "ItemId", "Title", "SubCode",
+        "UnitPrice", "Quantity", "ItemTaxRatio",
+        "Jan", "ProductId", "CategoryId",
+        "CouponDiscount", "OriginalPrice",
+        "SellerId",
+    ]
+
+    async def _extract_order_items(
+        self,
+        *,
+        limit: int,
+        cursor: str | None,
+        start_date: str | None,
+        end_date: str | None,
+    ) -> list[dict[str, Any]]:
+        """orderList で注文ID一覧を取得し、各注文の orderInfo で商品明細を取得する。"""
+        import asyncio
+
+        # Step 1: orderList で注文ID一覧を取得
+        orders = await self._extract_orders(
+            limit=limit, cursor=cursor,
+            start_date=start_date, end_date=end_date,
+        )
+        if not orders:
+            return []
+
+        order_ids = [o.get("OrderId") for o in orders if o.get("OrderId")]
+        logger.info("orderInfo: %d件の注文の明細を取得します", len(order_ids))
+
+        # Step 2: 各注文に対して orderInfo を呼び出す (レートリミット遵守)
+        url = _ENDPOINT_URLS["seller_order_items"]
+        field_csv = ",".join(self._ORDER_INFO_FIELDS)
+        all_items: list[dict[str, Any]] = []
+
+        for i, order_id in enumerate(order_ids):
+            await yahoo_limiter.acquire()
+
+            xml_body = (
+                "<Req>\n"
+                "  <Target>\n"
+                f"    <OrderId>{order_id}</OrderId>\n"
+                f"    <Field>{field_csv}</Field>\n"
+                "  </Target>\n"
+                f"  <SellerId>{self._seller_id}</SellerId>\n"
+                "</Req>"
+            )
+            headers = {
+                "Authorization": f"Bearer {self._access_token}",
+                "Content-Type": "application/xml; charset=utf-8",
+            }
+
+            async def _do_post(body=xml_body):
+                resp = await self._http.post(url, content=body, headers=headers)
+                if resp.status_code >= 400:
+                    logger.error(
+                        "orderInfo error %d for order %s. Response: %s",
+                        resp.status_code, order_id, resp.text[:1000],
+                    )
+                resp.raise_for_status()
+                return resp
+
+            response = await retry_on_429(_do_post)
+            items = _parse_order_info_items(response.text, order_id)
+            all_items.extend(items)
+
+            if (i + 1) % 50 == 0:
+                logger.info("orderInfo: %d/%d 注文処理済み (%d明細)", i + 1, len(order_ids), len(all_items))
+
+        logger.info("orderInfo: 合計 %d明細を取得 (%d注文)", len(all_items), len(order_ids))
+        return all_items
 
     async def _extract_seller_items(
         self,
