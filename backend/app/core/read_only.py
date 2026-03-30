@@ -17,6 +17,8 @@ PLATFORM_URL_ALLOWLISTS: dict[str, list[re.Pattern[str]]] = {
     ],
     "amazon": [
         re.compile(r"^https://sellingpartnerapi[a-zA-Z0-9\-]*\.amazon\.(com|co\.jp|co\.uk)/.*$"),
+        # Reports API のレポートダウンロード (署名付きS3 URL)
+        re.compile(r"^https://tortuga-prod-[a-zA-Z0-9\-]+\.s3[a-zA-Z0-9\-]*\.amazonaws\.com/.*$"),
     ],
     "yahoo": [
         re.compile(r"^https://circus\.shopping\.yahooapis\.jp/.*$"),
