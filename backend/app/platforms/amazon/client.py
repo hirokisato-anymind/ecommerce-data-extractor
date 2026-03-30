@@ -856,15 +856,24 @@ class AmazonClient(PlatformClient):
         if not doc_url:
             raise ValueError(f"ドキュメントURL取得失敗: {doc_resp}")
 
-        logger.info("Amazon Reports API: ドキュメントダウンロード中...")
+        logger.info("Amazon Reports API: ドキュメントダウンロード中... (compression=%s)", compression)
         raw_bytes = await self._sp_api_get_raw(doc_url)
 
-        # gzip 圧縮の場合は解凍
-        if compression == "GZIP":
+        # gzip 圧縮の場合は解凍 (APIフィールド判定 + マジックバイト判定)
+        if compression.upper() == "GZIP" or raw_bytes[:2] == b"\x1f\x8b":
+            logger.info("Amazon Reports API: gzip解凍中 (size=%d bytes)", len(raw_bytes))
             raw_bytes = gzip.decompress(raw_bytes)
 
-        # Step 4: TSVパース
-        text = raw_bytes.decode("utf-8-sig")  # BOM付きUTF-8対応
+        # Step 4: TSVパース — Shift_JIS の場合もあるためフォールバック
+        for encoding in ("utf-8-sig", "utf-8", "shift_jis", "cp932"):
+            try:
+                text = raw_bytes.decode(encoding)
+                logger.info("Amazon Reports API: エンコーディング=%s でデコード成功", encoding)
+                break
+            except (UnicodeDecodeError, ValueError):
+                continue
+        else:
+            text = raw_bytes.decode("utf-8", errors="replace")
         reader = csv.DictReader(io.StringIO(text), delimiter="\t")
 
         all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["orders"]["fields"]]
