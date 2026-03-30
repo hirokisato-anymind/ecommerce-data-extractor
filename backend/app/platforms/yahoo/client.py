@@ -814,10 +814,17 @@ class YahooClient(PlatformClient):
             end_date=end_date,
         )
 
+        logger.info("orderList request XML:\n%s", xml_body)
+
         async def _do_post():
             resp = await self._http.post(
                 url, content=xml_body, headers=headers,
             )
+            if resp.status_code >= 400:
+                logger.error(
+                    "orderList error %d. Response body: %s",
+                    resp.status_code, resp.text[:2000],
+                )
             resp.raise_for_status()
             return resp
 
