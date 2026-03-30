@@ -136,6 +136,16 @@ query Orders($limit: Int!, $cursor: String, $query: String) {
               title
               quantity
               sku
+              originalUnitPriceSet {
+                shopMoney {
+                  amount
+                }
+              }
+              discountedUnitPriceSet {
+                shopMoney {
+                  amount
+                }
+              }
             }
           }
         }
@@ -295,7 +305,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "displayFulfillmentStatus", "type": "string", "description": "フルフィルメントステータス", "bq_type": "STRING"},
             {"name": "createdAt", "type": "datetime", "description": "作成日時", "bq_type": "TIMESTAMP"},
             {"name": "updatedAt", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
-            {"name": "lineItems", "type": "list", "description": "明細行 (title, quantity, sku)", "bq_type": "JSON"},
+            {"name": "lineItems", "type": "list", "description": "明細行 (title, quantity, sku, unitPrice, discountedUnitPrice)", "bq_type": "JSON"},
         ],
     },
     "customers": {
@@ -382,6 +392,15 @@ def _flatten_edges(edges: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for key, value in node.items():
             if isinstance(value, dict) and "edges" in value:
                 node[key] = _flatten_edges(value["edges"])
+        # Flatten MoneySet fields in lineItems (unitPrice)
+        for money_key, flat_key in [
+            ("originalUnitPriceSet", "unitPrice"),
+            ("discountedUnitPriceSet", "discountedUnitPrice"),
+        ]:
+            money_set = node.pop(money_key, None)
+            if isinstance(money_set, dict):
+                shop_money = money_set.get("shopMoney", {})
+                node[flat_key] = shop_money.get("amount")
         records.append(node)
     return records
 
