@@ -254,7 +254,7 @@ class RakutenClient(PlatformClient):
 
         # Step 1: Search order numbers
         search_body: dict[str, Any] = {
-            "dateType": 1,  # 注文日
+            "dateType": 2,  # 更新日 (新規注文+ステータス変更の両方を取得)
             "startDatetime": start_dt,
             "endDatetime": end_dt,
             "PaginationRequestModel": {

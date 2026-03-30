@@ -185,7 +185,7 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
                     start_date = (datetime.now(timezone.utc) - _td(days=n_days)).strftime("%Y-%m-%d")
 
         # Ensure updatedAt-type columns are fetched for incremental sync tracking
-        _UPDATED_AT_KEYS = {"updatedAt", "updated_at", "LastUpdateDate", "orderDatetime"}
+        _UPDATED_AT_KEYS = {"updatedAt", "updated_at", "LastUpdateDate"}
         sync_columns = _UPDATED_AT_KEYS | filter_columns
 
         if columns:
@@ -236,11 +236,15 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
         # Extract the latest updatedAt BEFORE stripping extra columns
         new_synced_at = None
         if items:
-            for date_key in ("updatedAt", "updated_at", "LastUpdateDate", "orderDatetime"):
-                dates = [item.get(date_key) for item in items if item.get(date_key)]
-                if dates:
-                    new_synced_at = max(dates)
-                    break
+            if platform_id == "rakuten":
+                # 楽天には「最終更新日時」カラムがないため、実行時刻を使用
+                new_synced_at = datetime.now(timezone.utc).isoformat()
+            else:
+                for date_key in ("updatedAt", "updated_at", "LastUpdateDate"):
+                    dates = [item.get(date_key) for item in items if item.get(date_key)]
+                    if dates:
+                        new_synced_at = max(dates)
+                        break
 
         # フィルター適用後、ユーザー選択カラムのみに絞り込む（追加取得カラムを除外）
         if columns:
