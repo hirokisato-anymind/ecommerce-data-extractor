@@ -406,6 +406,11 @@ export function JobList({ onEdit }: JobListProps) {
                           </Badge>
                         ) : null}
                       </div>
+                      {job.last_synced_at && (
+                        <div className="text-[10px] text-slate-400 mt-0.5" title={`次回は ${formatDateTime(job.last_synced_at)} 以降の更新分を取得`}>
+                          増分同期: {formatDateTime(job.last_synced_at)} 〜
+                        </div>
+                      )}
                     </TableCell>
 
                     {/* Actions */}
