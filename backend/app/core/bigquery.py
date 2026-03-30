@@ -245,14 +245,17 @@ async def write_to_bigquery(
     def _make_load_config(write_disposition) -> bigquery.LoadJobConfig:
         """既存テーブルのスキーマがあればそれを使い、なければautodetectにする。"""
         if table.schema:
-            return bigquery.LoadJobConfig(
+            cfg = bigquery.LoadJobConfig(
                 schema=table.schema,
                 write_disposition=write_disposition,
                 source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
-                schema_update_options=[
-                    bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION,
-                ],
             )
+            # schema_update_options は WRITE_APPEND でのみ使用可能
+            if write_disposition == bigquery.WriteDisposition.WRITE_APPEND:
+                cfg.schema_update_options = [
+                    bigquery.SchemaUpdateOption.ALLOW_FIELD_ADDITION,
+                ]
+            return cfg
         return bigquery.LoadJobConfig(
             autodetect=True,
             write_disposition=write_disposition,
