@@ -96,7 +96,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "SalesChannel", "type": "string", "description": "販売チャネル", "bq_type": "STRING"},
             {"name": "FulfillmentChannel", "type": "string", "description": "フルフィルメント (AFN=FBA, MFN=自社出荷)", "bq_type": "STRING"},
             # 金額
-            {"name": "OrderTotalAmount", "type": "number", "description": "注文合計金額", "bq_type": "FLOAT"},
+            {"name": "OrderTotalAmount", "type": "number", "description": "注文合計金額 (税込・送料込・割引適用後)", "bq_type": "FLOAT"},
             {"name": "OrderTotalCurrency", "type": "string", "description": "通貨コード", "bq_type": "STRING"},
             {"name": "NumberOfItemsShipped", "type": "integer", "description": "出荷済み商品数", "bq_type": "INTEGER"},
             {"name": "NumberOfItemsUnshipped", "type": "integer", "description": "未出荷商品数", "bq_type": "INTEGER"},
@@ -384,7 +384,15 @@ def _flatten_report_order(row: dict[str, str]) -> dict[str, Any]:
         "OrderType": None,
         "SalesChannel": row.get("sales-channel"),
         "FulfillmentChannel": row.get("fulfilled-by") or row.get("fulfillment-channel"),
-        "OrderTotalAmount": _safe_float(row.get("item-price")),
+        # 明細単位の金額 — 集約時に合算される
+        "_item_price": _safe_float(row.get("item-price")),
+        "_item_tax": _safe_float(row.get("item-tax")),
+        "_shipping_price": _safe_float(row.get("shipping-price")),
+        "_shipping_tax": _safe_float(row.get("shipping-tax")),
+        "_gift_wrap_price": _safe_float(row.get("gift-wrap-price")),
+        "_gift_wrap_tax": _safe_float(row.get("gift-wrap-tax")),
+        "_promotion_discount": _safe_float(row.get("item-promotion-discount")),
+        "OrderTotalAmount": None,  # 集約時に計算
         "OrderTotalCurrency": row.get("currency"),
         "NumberOfItemsShipped": _safe_int(row.get("quantity")),
         "NumberOfItemsUnshipped": None,
@@ -402,15 +410,67 @@ def _flatten_report_order(row: dict[str, str]) -> dict[str, Any]:
         "IsPrime": None,
         "IsBusinessOrder": row.get("is-business-order") == "true" if row.get("is-business-order") else None,
         "IsGift": row.get("is-gift-wrap-ordered") == "true" if row.get("is-gift-wrap-ordered") else None,
-        "ItemASINs": row.get("asin"),
-        "ItemSKUs": row.get("sku"),
-        "ItemTitles": row.get("product-name"),
-        "ItemQuantities": row.get("quantity"),
-        "ItemPrices": row.get("item-price"),
-        "ItemTaxes": row.get("item-tax"),
-        "PromotionDiscounts": row.get("item-promotion-discount"),
+        "ItemASINs": row.get("asin") or "",
+        "ItemSKUs": row.get("sku") or "",
+        "ItemTitles": row.get("product-name") or "",
+        "ItemQuantities": row.get("quantity") or "",
+        "ItemPrices": row.get("item-price") or "",
+        "ItemTaxes": row.get("item-tax") or "",
+        "PromotionDiscounts": row.get("item-promotion-discount") or "",
         "PointsGranted": None,
     }
+
+
+def _aggregate_order_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """同一 AmazonOrderId の明細行を1注文1行に集約する。
+
+    - 金額フィールド: 合算して OrderTotalAmount に設定
+    - 明細フィールド (ItemASINs等): カンマ区切りで連結
+    - 注文レベルのフィールド: 先頭行の値を使用
+    """
+    from collections import OrderedDict
+
+    grouped: OrderedDict[str, list[dict[str, Any]]] = OrderedDict()
+    for row in rows:
+        oid = row.get("AmazonOrderId") or ""
+        grouped.setdefault(oid, []).append(row)
+
+    _SUM_KEYS = (
+        "_item_price", "_item_tax", "_shipping_price", "_shipping_tax",
+        "_gift_wrap_price", "_gift_wrap_tax", "_promotion_discount",
+    )
+    _JOIN_KEYS = (
+        "ItemASINs", "ItemSKUs", "ItemTitles",
+        "ItemQuantities", "ItemPrices", "ItemTaxes", "PromotionDiscounts",
+    )
+
+    aggregated = []
+    for _oid, order_rows in grouped.items():
+        merged = dict(order_rows[0])
+
+        if len(order_rows) > 1:
+            # 明細をカンマ連結
+            for key in _JOIN_KEYS:
+                merged[key] = ", ".join(r.get(key) or "" for r in order_rows)
+
+            # 数量を合算
+            total_qty = sum(r.get("NumberOfItemsShipped") or 0 for r in order_rows)
+            merged["NumberOfItemsShipped"] = total_qty
+
+        # 金額を合算して税込合計を算出
+        total = 0.0
+        for key in _SUM_KEYS:
+            val = sum(r.get(key) or 0.0 for r in order_rows)
+            total += val
+        merged["OrderTotalAmount"] = round(total, 2) if total else None
+
+        # 内部用フィールドを除去
+        for key in _SUM_KEYS:
+            merged.pop(key, None)
+
+        aggregated.append(merged)
+
+    return aggregated
 
 
 def _flatten_finance_event(event: dict[str, Any], event_type: str = "Shipment") -> list[dict[str, Any]]:
@@ -877,16 +937,22 @@ class AmazonClient(PlatformClient):
         reader = csv.DictReader(io.StringIO(text), delimiter="\t")
 
         all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["orders"]["fields"]]
-        records = []
-        for row in reader:
-            if len(records) >= limit:
-                break
-            flat = _flatten_report_order(row)
-            if columns:
-                flat = {k: flat.get(k) for k in columns}
-            records.append(flat)
 
-        logger.info("Amazon Reports API: %d件の注文を取得", len(records))
+        # TSV行をフラット化（明細単位）
+        raw_rows = []
+        for row in reader:
+            raw_rows.append(_flatten_report_order(row))
+
+        # 同一注文IDで集約（1注文 = 1行）
+        records = _aggregate_order_rows(raw_rows)
+        if limit and len(records) > limit:
+            records = records[:limit]
+
+        # カラム絞り込み
+        if columns:
+            records = [{k: r.get(k) for k in columns} for r in records]
+
+        logger.info("Amazon Reports API: %d件の注文を取得 (TSV行数: %d)", len(records), len(raw_rows))
 
         return {
             "items": records,
