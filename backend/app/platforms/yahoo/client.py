@@ -734,6 +734,9 @@ class YahooClient(PlatformClient):
         except httpx.HTTPStatusError as e:
             if e.response.status_code != 401 or endpoint_id not in _SELLER_ENDPOINTS:
                 raise
+            logger.warning(
+                "Yahoo seller API returned 401. Response: %s", e.response.text[:1000]
+            )
 
         # 401: refresh token and retry with backoff
         await self._ensure_valid_token()
@@ -748,8 +751,16 @@ class YahooClient(PlatformClient):
                 )
             except httpx.HTTPStatusError as e2:
                 if e2.response.status_code == 401 and attempt < 2:
-                    logger.warning("Retry %d still 401, waiting longer...", attempt)
+                    logger.warning(
+                        "Retry %d still 401. Response: %s",
+                        attempt, e2.response.text[:1000],
+                    )
                     continue
+                if e2.response.status_code == 401:
+                    logger.error(
+                        "Yahoo seller API 401 after all retries. Response: %s",
+                        e2.response.text[:1000],
+                    )
                 raise
 
     async def _do_extract(

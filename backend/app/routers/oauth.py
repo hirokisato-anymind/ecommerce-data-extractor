@@ -124,13 +124,14 @@ async def yahoo_authorize(request: Request) -> dict:
     if proto == "https" and base.startswith("http://"):
         base = "https://" + base[len("http://"):]
     redirect_uri = base + "/api/oauth/yahoo/callback"
-    # openid + store scope required for seller API access (orders, items, etc.)
+    # Yahoo Shopping seller API access is granted at the app level in Yahoo
+    # Developer Console, not via OAuth scopes. Only openid is needed here.
     auth_url = (
         f"{YAHOO_AUTH_URL}"
         f"?response_type=code"
         f"&client_id={client_id}"
         f"&redirect_uri={redirect_uri}"
-        f"&scope=openid+store"
+        f"&scope=openid"
     )
     return {"authorize_url": auth_url, "redirect_uri": redirect_uri}
 
