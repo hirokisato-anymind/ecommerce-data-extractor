@@ -16,11 +16,10 @@ async def extract_data(
     platform_id: str = Query(..., description="Platform ID"),
     endpoint_id: str = Query(..., description="Endpoint ID"),
     columns: str | None = Query(None, description="Comma-separated column names"),
-    limit: int = Query(100, ge=1, le=10000, description="Number of records"),
+    limit: int = Query(100, ge=1, le=50000, description="Number of records"),
     cursor: str | None = Query(None, description="Pagination cursor"),
     filters: str | None = Query(None, description="JSON array of filter definitions"),
-    start_date: str | None = Query(None, description="Start date (ISO-8601, e.g. 2024-01-01)"),
-    end_date: str | None = Query(None, description="End date (ISO-8601, e.g. 2024-12-31)"),
+    keyword: str | None = Query(None, description="Search keyword (used by Yahoo ItemSearch etc.)"),
     fetch_all: bool = Query(False, description="Paginate through ALL pages up to limit"),
 ) -> dict:
     """Extract data from a specific platform endpoint."""
@@ -43,6 +42,17 @@ async def extract_data(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=f"Invalid filters: {e}")
 
+    # Derive start_date/end_date from filters for API-level filtering
+    start_date: str | None = None
+    end_date: str | None = None
+    if filter_list:
+        from datetime import datetime, timedelta, timezone
+        for f in filter_list:
+            if f.operator == "last_n_days" and f.column in ("createdAt", "created_at", "CreatedAfter"):
+                n_days = int(f.value)
+                start_date = (datetime.now(timezone.utc) - timedelta(days=n_days)).strftime("%Y-%m-%d")
+                break
+
     try:
         if fetch_all:
             # Paginate through all pages up to the requested limit
@@ -59,6 +69,7 @@ async def extract_data(
                     cursor=current_cursor,
                     start_date=start_date,
                     end_date=end_date,
+                    keyword=keyword,
                 )
                 all_items.extend(result.get("items", []))
                 result_meta = result
@@ -67,7 +78,7 @@ async def extract_data(
                 if not next_cursor or not result.get("items"):
                     break
                 current_cursor = next_cursor
-                await asyncio.sleep(1.0)  # Inter-page delay to avoid rate limits
+                # Rate limiting is handled by per-platform rate limiters
 
             result_meta["items"] = all_items[:limit]
             result_meta["next_cursor"] = None if len(all_items) <= limit else result_meta.get("next_cursor")
@@ -80,6 +91,7 @@ async def extract_data(
                 cursor=cursor,
                 start_date=start_date,
                 end_date=end_date,
+                keyword=keyword,
             )
 
         # Apply post-extraction filtering with type-aware comparisons

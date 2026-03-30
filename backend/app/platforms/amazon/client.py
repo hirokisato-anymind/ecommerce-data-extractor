@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 from datetime import datetime, timedelta, timezone
@@ -6,9 +7,12 @@ from typing import Any
 import httpx
 
 from app.config import settings
-from app.core.rate_limiter import amazon_limiter, retry_on_429
+from app.core.rate_limiter import amazon_limiter, amazon_orders_limiter, amazon_order_items_limiter, retry_on_429
 from app.core.read_only import ReadOnlyHttpClient
 from app.platforms.base import PlatformClient
+
+# Semaphore to limit concurrent orderItems requests (conservative: 2 at a time)
+_ORDER_ITEMS_SEMAPHORE = asyncio.Semaphore(1)
 
 logger = logging.getLogger("ecommerce_data_extractor.amazon")
 
@@ -84,163 +88,163 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
     "orders": {
         "fields": [
             # 注文基本
-            {"name": "AmazonOrderId", "type": "string", "description": "Amazon注文ID"},
-            {"name": "PurchaseDate", "type": "datetime", "description": "購入日時"},
-            {"name": "LastUpdateDate", "type": "datetime", "description": "最終更新日時"},
-            {"name": "OrderStatus", "type": "string", "description": "注文ステータス (Pending/Unshipped/Shipped/Canceled等)"},
-            {"name": "OrderType", "type": "string", "description": "注文タイプ (StandardOrder等)"},
-            {"name": "SalesChannel", "type": "string", "description": "販売チャネル"},
-            {"name": "FulfillmentChannel", "type": "string", "description": "フルフィルメント (AFN=FBA, MFN=自社出荷)"},
+            {"name": "AmazonOrderId", "type": "string", "description": "Amazon注文ID", "bq_type": "STRING"},
+            {"name": "PurchaseDate", "type": "datetime", "description": "購入日時", "bq_type": "TIMESTAMP"},
+            {"name": "LastUpdateDate", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
+            {"name": "OrderStatus", "type": "string", "description": "注文ステータス (Pending/Unshipped/Shipped/Canceled等)", "bq_type": "STRING"},
+            {"name": "OrderType", "type": "string", "description": "注文タイプ (StandardOrder等)", "bq_type": "STRING"},
+            {"name": "SalesChannel", "type": "string", "description": "販売チャネル", "bq_type": "STRING"},
+            {"name": "FulfillmentChannel", "type": "string", "description": "フルフィルメント (AFN=FBA, MFN=自社出荷)", "bq_type": "STRING"},
             # 金額
-            {"name": "OrderTotalAmount", "type": "number", "description": "注文合計金額"},
-            {"name": "OrderTotalCurrency", "type": "string", "description": "通貨コード"},
-            {"name": "NumberOfItemsShipped", "type": "integer", "description": "出荷済み商品数"},
-            {"name": "NumberOfItemsUnshipped", "type": "integer", "description": "未出荷商品数"},
+            {"name": "OrderTotalAmount", "type": "number", "description": "注文合計金額", "bq_type": "FLOAT"},
+            {"name": "OrderTotalCurrency", "type": "string", "description": "通貨コード", "bq_type": "STRING"},
+            {"name": "NumberOfItemsShipped", "type": "integer", "description": "出荷済み商品数", "bq_type": "INTEGER"},
+            {"name": "NumberOfItemsUnshipped", "type": "integer", "description": "未出荷商品数", "bq_type": "INTEGER"},
             # 配送
-            {"name": "ShipServiceLevel", "type": "string", "description": "配送サービスレベル"},
-            {"name": "EarliestShipDate", "type": "datetime", "description": "最早出荷日"},
-            {"name": "LatestShipDate", "type": "datetime", "description": "最終出荷日"},
-            {"name": "EarliestDeliveryDate", "type": "datetime", "description": "最早配達日"},
-            {"name": "LatestDeliveryDate", "type": "datetime", "description": "最終配達日"},
-            {"name": "ShippingPrefecture", "type": "string", "description": "配送先都道府県"},
-            {"name": "ShippingPostalCode", "type": "string", "description": "配送先郵便番号"},
-            {"name": "AutomatedCarrier", "type": "string", "description": "自動配送キャリア"},
-            {"name": "AutomatedShipMethod", "type": "string", "description": "自動配送方法"},
+            {"name": "ShipServiceLevel", "type": "string", "description": "配送サービスレベル", "bq_type": "STRING"},
+            {"name": "EarliestShipDate", "type": "datetime", "description": "最早出荷日", "bq_type": "TIMESTAMP"},
+            {"name": "LatestShipDate", "type": "datetime", "description": "最終出荷日", "bq_type": "TIMESTAMP"},
+            {"name": "EarliestDeliveryDate", "type": "datetime", "description": "最早配達日", "bq_type": "TIMESTAMP"},
+            {"name": "LatestDeliveryDate", "type": "datetime", "description": "最終配達日", "bq_type": "TIMESTAMP"},
+            {"name": "ShippingPrefecture", "type": "string", "description": "配送先都道府県", "bq_type": "STRING"},
+            {"name": "ShippingPostalCode", "type": "string", "description": "配送先郵便番号", "bq_type": "STRING"},
+            {"name": "AutomatedCarrier", "type": "string", "description": "自動配送キャリア", "bq_type": "STRING"},
+            {"name": "AutomatedShipMethod", "type": "string", "description": "自動配送方法", "bq_type": "STRING"},
             # 購入者
-            {"name": "BuyerEmail", "type": "string", "description": "購入者メール"},
-            {"name": "PaymentMethod", "type": "string", "description": "支払方法"},
+            {"name": "BuyerEmail", "type": "string", "description": "購入者メール", "bq_type": "STRING"},
+            {"name": "PaymentMethod", "type": "string", "description": "支払方法", "bq_type": "STRING"},
             # フラグ
-            {"name": "IsPrime", "type": "boolean", "description": "Prime注文"},
-            {"name": "IsBusinessOrder", "type": "boolean", "description": "ビジネス注文"},
-            {"name": "IsGift", "type": "boolean", "description": "ギフト注文"},
+            {"name": "IsPrime", "type": "boolean", "description": "Prime注文", "bq_type": "BOOLEAN"},
+            {"name": "IsBusinessOrder", "type": "boolean", "description": "ビジネス注文", "bq_type": "BOOLEAN"},
+            {"name": "IsGift", "type": "boolean", "description": "ギフト注文", "bq_type": "BOOLEAN"},
             # 注文明細 (OrderItems結合)
-            {"name": "ItemASINs", "type": "string", "description": "ASIN一覧"},
-            {"name": "ItemSKUs", "type": "string", "description": "出品者SKU一覧"},
-            {"name": "ItemTitles", "type": "string", "description": "商品名一覧"},
-            {"name": "ItemQuantities", "type": "string", "description": "注文数量一覧"},
-            {"name": "ItemPrices", "type": "string", "description": "商品価格一覧"},
-            {"name": "ItemTaxes", "type": "string", "description": "商品税額一覧"},
-            {"name": "PromotionDiscounts", "type": "string", "description": "プロモーション割引一覧"},
-            {"name": "PointsGranted", "type": "string", "description": "付与ポイント一覧"},
+            {"name": "ItemASINs", "type": "string", "description": "ASIN一覧", "bq_type": "STRING"},
+            {"name": "ItemSKUs", "type": "string", "description": "出品者SKU一覧", "bq_type": "STRING"},
+            {"name": "ItemTitles", "type": "string", "description": "商品名一覧", "bq_type": "STRING"},
+            {"name": "ItemQuantities", "type": "string", "description": "注文数量一覧", "bq_type": "STRING"},
+            {"name": "ItemPrices", "type": "string", "description": "商品価格一覧", "bq_type": "STRING"},
+            {"name": "ItemTaxes", "type": "string", "description": "商品税額一覧", "bq_type": "STRING"},
+            {"name": "PromotionDiscounts", "type": "string", "description": "プロモーション割引一覧", "bq_type": "STRING"},
+            {"name": "PointsGranted", "type": "string", "description": "付与ポイント一覧", "bq_type": "STRING"},
         ],
     },
     "finances": {
         "fields": [
-            {"name": "AmazonOrderId", "type": "string", "description": "Amazon注文ID"},
-            {"name": "PostedDate", "type": "datetime", "description": "計上日時"},
-            {"name": "MarketplaceName", "type": "string", "description": "マーケットプレイス"},
-            {"name": "SellerSKU", "type": "string", "description": "出品者SKU"},
-            {"name": "QuantityShipped", "type": "integer", "description": "出荷数量"},
+            {"name": "AmazonOrderId", "type": "string", "description": "Amazon注文ID", "bq_type": "STRING"},
+            {"name": "PostedDate", "type": "datetime", "description": "計上日時", "bq_type": "TIMESTAMP"},
+            {"name": "MarketplaceName", "type": "string", "description": "マーケットプレイス", "bq_type": "STRING"},
+            {"name": "SellerSKU", "type": "string", "description": "出品者SKU", "bq_type": "STRING"},
+            {"name": "QuantityShipped", "type": "integer", "description": "出荷数量", "bq_type": "INTEGER"},
             # 売上
-            {"name": "Principal", "type": "number", "description": "商品売上"},
-            {"name": "Tax", "type": "number", "description": "商品税額"},
-            {"name": "ShippingCharge", "type": "number", "description": "配送料売上"},
-            {"name": "ShippingTax", "type": "number", "description": "配送料税額"},
-            {"name": "GiftWrap", "type": "number", "description": "ギフトラッピング売上"},
-            {"name": "GiftWrapTax", "type": "number", "description": "ギフトラッピング税額"},
+            {"name": "Principal", "type": "number", "description": "商品売上", "bq_type": "FLOAT"},
+            {"name": "Tax", "type": "number", "description": "商品税額", "bq_type": "FLOAT"},
+            {"name": "ShippingCharge", "type": "number", "description": "配送料売上", "bq_type": "FLOAT"},
+            {"name": "ShippingTax", "type": "number", "description": "配送料税額", "bq_type": "FLOAT"},
+            {"name": "GiftWrap", "type": "number", "description": "ギフトラッピング売上", "bq_type": "FLOAT"},
+            {"name": "GiftWrapTax", "type": "number", "description": "ギフトラッピング税額", "bq_type": "FLOAT"},
             # 手数料
-            {"name": "Commission", "type": "number", "description": "販売手数料"},
-            {"name": "FixedClosingFee", "type": "number", "description": "カテゴリー成約料"},
-            {"name": "ShippingHB", "type": "number", "description": "配送料手数料"},
-            {"name": "GiftwrapCommission", "type": "number", "description": "ギフトラッピング手数料"},
-            {"name": "VariableClosingFee", "type": "number", "description": "変動成約料"},
+            {"name": "Commission", "type": "number", "description": "販売手数料", "bq_type": "FLOAT"},
+            {"name": "FixedClosingFee", "type": "number", "description": "カテゴリー成約料", "bq_type": "FLOAT"},
+            {"name": "ShippingHB", "type": "number", "description": "配送料手数料", "bq_type": "FLOAT"},
+            {"name": "GiftwrapCommission", "type": "number", "description": "ギフトラッピング手数料", "bq_type": "FLOAT"},
+            {"name": "VariableClosingFee", "type": "number", "description": "変動成約料", "bq_type": "FLOAT"},
             # ポイント
-            {"name": "CostOfPointsGranted", "type": "number", "description": "ポイント原資負担額"},
+            {"name": "CostOfPointsGranted", "type": "number", "description": "ポイント原資負担額", "bq_type": "FLOAT"},
             # 合計
-            {"name": "TotalCharge", "type": "number", "description": "売上合計"},
-            {"name": "TotalFee", "type": "number", "description": "手数料合計"},
-            {"name": "NetProceeds", "type": "number", "description": "純収益 (売上-手数料-ポイント)"},
-            {"name": "EventType", "type": "string", "description": "イベント種別 (Shipment/Refund/GuaranteeClaim)"},
+            {"name": "TotalCharge", "type": "number", "description": "売上合計", "bq_type": "FLOAT"},
+            {"name": "TotalFee", "type": "number", "description": "手数料合計", "bq_type": "FLOAT"},
+            {"name": "NetProceeds", "type": "number", "description": "純収益 (売上-手数料-ポイント)", "bq_type": "FLOAT"},
+            {"name": "EventType", "type": "string", "description": "イベント種別 (Shipment/Refund/GuaranteeClaim)", "bq_type": "STRING"},
         ],
     },
     "inventory": {
         "fields": [
-            {"name": "asin", "type": "string", "description": "ASIN"},
-            {"name": "fnSku", "type": "string", "description": "FN SKU (Amazonフルフィルメント番号)"},
-            {"name": "sellerSku", "type": "string", "description": "出品者SKU"},
-            {"name": "condition", "type": "string", "description": "コンディション"},
-            {"name": "totalQuantity", "type": "integer", "description": "合計在庫数"},
-            {"name": "fulfillableQuantity", "type": "integer", "description": "出荷可能数"},
-            {"name": "inboundWorkingQuantity", "type": "integer", "description": "納品作業中数量"},
-            {"name": "inboundShippedQuantity", "type": "integer", "description": "納品輸送中数量"},
+            {"name": "asin", "type": "string", "description": "ASIN", "bq_type": "STRING"},
+            {"name": "fnSku", "type": "string", "description": "FN SKU (Amazonフルフィルメント番号)", "bq_type": "STRING"},
+            {"name": "sellerSku", "type": "string", "description": "出品者SKU", "bq_type": "STRING"},
+            {"name": "condition", "type": "string", "description": "コンディション", "bq_type": "STRING"},
+            {"name": "totalQuantity", "type": "integer", "description": "合計在庫数", "bq_type": "INTEGER"},
+            {"name": "fulfillableQuantity", "type": "integer", "description": "出荷可能数", "bq_type": "INTEGER"},
+            {"name": "inboundWorkingQuantity", "type": "integer", "description": "納品作業中数量", "bq_type": "INTEGER"},
+            {"name": "inboundShippedQuantity", "type": "integer", "description": "納品輸送中数量", "bq_type": "INTEGER"},
         ],
     },
     "reports": {
         "fields": [
-            {"name": "reportId", "type": "string", "description": "レポートID"},
-            {"name": "reportType", "type": "string", "description": "レポートタイプ"},
-            {"name": "processingStatus", "type": "string", "description": "処理ステータス (IN_QUEUE/IN_PROGRESS/DONE等)"},
-            {"name": "dataStartTime", "type": "datetime", "description": "データ開始日時"},
-            {"name": "dataEndTime", "type": "datetime", "description": "データ終了日時"},
-            {"name": "createdTime", "type": "datetime", "description": "レポート作成日時"},
+            {"name": "reportId", "type": "string", "description": "レポートID", "bq_type": "STRING"},
+            {"name": "reportType", "type": "string", "description": "レポートタイプ", "bq_type": "STRING"},
+            {"name": "processingStatus", "type": "string", "description": "処理ステータス (IN_QUEUE/IN_PROGRESS/DONE等)", "bq_type": "STRING"},
+            {"name": "dataStartTime", "type": "datetime", "description": "データ開始日時", "bq_type": "TIMESTAMP"},
+            {"name": "dataEndTime", "type": "datetime", "description": "データ終了日時", "bq_type": "TIMESTAMP"},
+            {"name": "createdTime", "type": "datetime", "description": "レポート作成日時", "bq_type": "TIMESTAMP"},
         ],
     },
     "catalog": {
         "fields": [
-            {"name": "asin", "type": "string", "description": "ASIN"},
-            {"name": "title", "type": "string", "description": "商品タイトル"},
-            {"name": "brand", "type": "string", "description": "ブランド名"},
-            {"name": "color", "type": "string", "description": "カラー"},
-            {"name": "size", "type": "string", "description": "サイズ"},
-            {"name": "modelNumber", "type": "string", "description": "モデル番号"},
-            {"name": "salesRank", "type": "integer", "description": "売れ筋ランキング"},
-            {"name": "imageUrl", "type": "string", "description": "メイン画像URL"},
-            {"name": "itemClassification", "type": "string", "description": "商品分類 (BASE_PRODUCT/VARIATION_PARENT等)"},
+            {"name": "asin", "type": "string", "description": "ASIN", "bq_type": "STRING"},
+            {"name": "title", "type": "string", "description": "商品タイトル", "bq_type": "STRING"},
+            {"name": "brand", "type": "string", "description": "ブランド名", "bq_type": "STRING"},
+            {"name": "color", "type": "string", "description": "カラー", "bq_type": "STRING"},
+            {"name": "size", "type": "string", "description": "サイズ", "bq_type": "STRING"},
+            {"name": "modelNumber", "type": "string", "description": "モデル番号", "bq_type": "STRING"},
+            {"name": "salesRank", "type": "integer", "description": "売れ筋ランキング", "bq_type": "INTEGER"},
+            {"name": "imageUrl", "type": "string", "description": "メイン画像URL", "bq_type": "STRING"},
+            {"name": "itemClassification", "type": "string", "description": "商品分類 (BASE_PRODUCT/VARIATION_PARENT等)", "bq_type": "STRING"},
         ],
     },
     "pricing": {
         "fields": [
-            {"name": "asin", "type": "string", "description": "ASIN"},
-            {"name": "sellerSku", "type": "string", "description": "出品者SKU"},
-            {"name": "listingPrice", "type": "number", "description": "出品価格"},
-            {"name": "shippingPrice", "type": "number", "description": "配送料"},
-            {"name": "landedPrice", "type": "number", "description": "最終購入価格 (価格+配送料)"},
-            {"name": "points", "type": "number", "description": "ポイント付与額"},
-            {"name": "buyBoxPrice", "type": "number", "description": "Buy Box価格"},
-            {"name": "numberOfOffers", "type": "integer", "description": "オファー数"},
-            {"name": "condition", "type": "string", "description": "コンディション (New/Used等)"},
+            {"name": "asin", "type": "string", "description": "ASIN", "bq_type": "STRING"},
+            {"name": "sellerSku", "type": "string", "description": "出品者SKU", "bq_type": "STRING"},
+            {"name": "listingPrice", "type": "number", "description": "出品価格", "bq_type": "FLOAT"},
+            {"name": "shippingPrice", "type": "number", "description": "配送料", "bq_type": "FLOAT"},
+            {"name": "landedPrice", "type": "number", "description": "最終購入価格 (価格+配送料)", "bq_type": "FLOAT"},
+            {"name": "points", "type": "number", "description": "ポイント付与額", "bq_type": "FLOAT"},
+            {"name": "buyBoxPrice", "type": "number", "description": "Buy Box価格", "bq_type": "FLOAT"},
+            {"name": "numberOfOffers", "type": "integer", "description": "オファー数", "bq_type": "INTEGER"},
+            {"name": "condition", "type": "string", "description": "コンディション (New/Used等)", "bq_type": "STRING"},
         ],
     },
     "sales_metrics": {
         "fields": [
-            {"name": "date", "type": "string", "description": "日付 (YYYY-MM-DD)"},
-            {"name": "unitCount", "type": "integer", "description": "販売ユニット数"},
-            {"name": "orderItemCount", "type": "integer", "description": "注文アイテム数"},
-            {"name": "orderCount", "type": "integer", "description": "注文数"},
-            {"name": "averageUnitPrice", "type": "number", "description": "平均単価"},
-            {"name": "totalSales_amount", "type": "number", "description": "売上合計金額"},
-            {"name": "totalSales_currency", "type": "string", "description": "通貨コード"},
+            {"name": "date", "type": "string", "description": "日付 (YYYY-MM-DD)", "bq_type": "DATE"},
+            {"name": "unitCount", "type": "integer", "description": "販売ユニット数", "bq_type": "INTEGER"},
+            {"name": "orderItemCount", "type": "integer", "description": "注文アイテム数", "bq_type": "INTEGER"},
+            {"name": "orderCount", "type": "integer", "description": "注文数", "bq_type": "INTEGER"},
+            {"name": "averageUnitPrice", "type": "number", "description": "平均単価", "bq_type": "FLOAT"},
+            {"name": "totalSales_amount", "type": "number", "description": "売上合計金額", "bq_type": "FLOAT"},
+            {"name": "totalSales_currency", "type": "string", "description": "通貨コード", "bq_type": "STRING"},
         ],
     },
     "fba_shipments": {
         "fields": [
-            {"name": "shipmentId", "type": "string", "description": "納品プランID"},
-            {"name": "shipmentName", "type": "string", "description": "納品プラン名"},
-            {"name": "shipmentStatus", "type": "string", "description": "ステータス (WORKING/SHIPPED/RECEIVING/CLOSED等)"},
-            {"name": "destinationFulfillmentCenterId", "type": "string", "description": "納品先FC ID"},
-            {"name": "labelPrepType", "type": "string", "description": "ラベル準備タイプ"},
-            {"name": "areCasesRequired", "type": "boolean", "description": "ケース梱包必須"},
+            {"name": "shipmentId", "type": "string", "description": "納品プランID", "bq_type": "STRING"},
+            {"name": "shipmentName", "type": "string", "description": "納品プラン名", "bq_type": "STRING"},
+            {"name": "shipmentStatus", "type": "string", "description": "ステータス (WORKING/SHIPPED/RECEIVING/CLOSED等)", "bq_type": "STRING"},
+            {"name": "destinationFulfillmentCenterId", "type": "string", "description": "納品先FC ID", "bq_type": "STRING"},
+            {"name": "labelPrepType", "type": "string", "description": "ラベル準備タイプ", "bq_type": "STRING"},
+            {"name": "areCasesRequired", "type": "boolean", "description": "ケース梱包必須", "bq_type": "BOOLEAN"},
         ],
     },
     "brand_analytics": {
         "fields": [
-            {"name": "reportId", "type": "string", "description": "レポートID"},
-            {"name": "reportType", "type": "string", "description": "レポートタイプ"},
-            {"name": "processingStatus", "type": "string", "description": "処理ステータス (IN_QUEUE/IN_PROGRESS/DONE等)"},
-            {"name": "dataStartTime", "type": "datetime", "description": "データ開始日時"},
-            {"name": "dataEndTime", "type": "datetime", "description": "データ終了日時"},
-            {"name": "createdTime", "type": "datetime", "description": "レポート作成日時"},
+            {"name": "reportId", "type": "string", "description": "レポートID", "bq_type": "STRING"},
+            {"name": "reportType", "type": "string", "description": "レポートタイプ", "bq_type": "STRING"},
+            {"name": "processingStatus", "type": "string", "description": "処理ステータス (IN_QUEUE/IN_PROGRESS/DONE等)", "bq_type": "STRING"},
+            {"name": "dataStartTime", "type": "datetime", "description": "データ開始日時", "bq_type": "TIMESTAMP"},
+            {"name": "dataEndTime", "type": "datetime", "description": "データ終了日時", "bq_type": "TIMESTAMP"},
+            {"name": "createdTime", "type": "datetime", "description": "レポート作成日時", "bq_type": "TIMESTAMP"},
         ],
     },
     "direct_fulfillment": {
         "fields": [
-            {"name": "shipmentId", "type": "string", "description": "出荷ID"},
-            {"name": "amazonOrderId", "type": "string", "description": "Amazon注文ID"},
-            {"name": "shipmentStatus", "type": "string", "description": "出荷ステータス"},
-            {"name": "trackingNumber", "type": "string", "description": "追跡番号"},
-            {"name": "carrier", "type": "string", "description": "配送業者"},
-            {"name": "shipDate", "type": "datetime", "description": "出荷日"},
-            {"name": "deliveryDate", "type": "datetime", "description": "配達日"},
+            {"name": "shipmentId", "type": "string", "description": "出荷ID", "bq_type": "STRING"},
+            {"name": "amazonOrderId", "type": "string", "description": "Amazon注文ID", "bq_type": "STRING"},
+            {"name": "shipmentStatus", "type": "string", "description": "出荷ステータス", "bq_type": "STRING"},
+            {"name": "trackingNumber", "type": "string", "description": "追跡番号", "bq_type": "STRING"},
+            {"name": "carrier", "type": "string", "description": "配送業者", "bq_type": "STRING"},
+            {"name": "shipDate", "type": "datetime", "description": "出荷日", "bq_type": "TIMESTAMP"},
+            {"name": "deliveryDate", "type": "datetime", "description": "配達日", "bq_type": "TIMESTAMP"},
         ],
     },
 }
@@ -343,6 +347,70 @@ def _flatten_order(order: dict[str, Any], order_items: list[dict] | None = None)
             flat[key] = None
 
     return flat
+
+
+def _flatten_report_order(row: dict[str, str]) -> dict[str, Any]:
+    """レポートTSVの1行を既存のordersスキーマにマッピングする。
+
+    GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL レポートのカラム名:
+    amazon-order-id, purchase-date, last-updated-date, order-status, product-name,
+    sku, asin, quantity, item-price, item-tax, shipping-price, shipping-tax,
+    gift-wrap-price, gift-wrap-tax, item-promotion-discount, ship-promotion-discount,
+    ship-city, ship-state, ship-postal-code, ship-country, promotion-ids,
+    sales-channel, order-channel, is-business-order, purchase-order-number,
+    price-designation, fulfilled-by, is-iba, etc.
+    """
+    def _safe_float(v: str | None) -> float | None:
+        if not v or v == "":
+            return None
+        try:
+            return float(v)
+        except (ValueError, TypeError):
+            return None
+
+    def _safe_int(v: str | None) -> int | None:
+        if not v or v == "":
+            return None
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return None
+
+    return {
+        "AmazonOrderId": row.get("amazon-order-id"),
+        "PurchaseDate": row.get("purchase-date"),
+        "LastUpdateDate": row.get("last-updated-date"),
+        "OrderStatus": row.get("order-status"),
+        "OrderType": None,
+        "SalesChannel": row.get("sales-channel"),
+        "FulfillmentChannel": row.get("fulfilled-by") or row.get("fulfillment-channel"),
+        "OrderTotalAmount": _safe_float(row.get("item-price")),
+        "OrderTotalCurrency": row.get("currency"),
+        "NumberOfItemsShipped": _safe_int(row.get("quantity")),
+        "NumberOfItemsUnshipped": None,
+        "ShipServiceLevel": row.get("ship-service-level"),
+        "EarliestShipDate": None,
+        "LatestShipDate": None,
+        "EarliestDeliveryDate": None,
+        "LatestDeliveryDate": None,
+        "ShippingPrefecture": row.get("ship-state"),
+        "ShippingPostalCode": row.get("ship-postal-code"),
+        "AutomatedCarrier": None,
+        "AutomatedShipMethod": None,
+        "BuyerEmail": row.get("buyer-email"),
+        "PaymentMethod": None,
+        "IsPrime": None,
+        "IsBusinessOrder": row.get("is-business-order") == "true" if row.get("is-business-order") else None,
+        "IsGift": row.get("is-gift-wrap-ordered") == "true" if row.get("is-gift-wrap-ordered") else None,
+        "ItemASINs": row.get("asin"),
+        "ItemSKUs": row.get("sku"),
+        "ItemTitles": row.get("product-name"),
+        "ItemQuantities": row.get("quantity"),
+        "ItemPrices": row.get("item-price"),
+        "ItemTaxes": row.get("item-tax"),
+        "PromotionDiscounts": row.get("item-promotion-discount"),
+        "PointsGranted": None,
+    }
 
 
 def _flatten_finance_event(event: dict[str, Any], event_type: str = "Shipment") -> list[dict[str, Any]]:
@@ -569,6 +637,19 @@ def _flatten_mfn_shipment(shipment: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _flatten_mfn_order(order: dict[str, Any]) -> dict[str, Any]:
+    """Flatten an MFN order from the Orders API into the direct_fulfillment schema."""
+    return {
+        "shipmentId": None,
+        "amazonOrderId": order.get("AmazonOrderId"),
+        "shipmentStatus": order.get("OrderStatus"),
+        "trackingNumber": None,
+        "carrier": None,
+        "shipDate": order.get("EarliestShipDate"),
+        "deliveryDate": order.get("LatestDeliveryDate"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # AmazonClient
 # ---------------------------------------------------------------------------
@@ -620,7 +701,13 @@ class AmazonClient(PlatformClient):
     async def _sp_api_get(
         self, path: str, params: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        await amazon_limiter.acquire()
+        # Use endpoint-specific rate limiters
+        if "/orders/v0/orders" in path and "/orderItems" in path:
+            await amazon_order_items_limiter.acquire()
+        elif "/orders/v0/orders" in path:
+            await amazon_orders_limiter.acquire()
+        else:
+            await amazon_limiter.acquire()
         url = f"{SP_API_BASE_URL}{path}"
         headers = await self._get_headers()
 
@@ -628,6 +715,32 @@ class AmazonClient(PlatformClient):
             response = await self._http.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
+
+        return await retry_on_429(_do_get)
+
+    async def _sp_api_post(
+        self, path: str, json_body: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        await amazon_limiter.acquire()
+        url = f"{SP_API_BASE_URL}{path}"
+        headers = await self._get_headers()
+        headers["Content-Type"] = "application/json"
+
+        async def _do_post():
+            response = await self._http.post(url, json=json_body, headers=headers)
+            response.raise_for_status()
+            return response.json()
+
+        return await retry_on_429(_do_post)
+
+    async def _sp_api_get_raw(self, url: str) -> bytes:
+        """外部URL（レポートダウンロード等）からバイナリデータを取得する。
+        署名付きS3 URLの場合はSP-APIヘッダー不要。"""
+
+        async def _do_get():
+            response = await self._http.get(url)
+            response.raise_for_status()
+            return response.content
 
         return await retry_on_429(_do_get)
 
@@ -654,6 +767,7 @@ class AmazonClient(PlatformClient):
         *,
         start_date: str | None = None,
         end_date: str | None = None,
+        keyword: str | None = None,
     ) -> dict:
         handlers = {
             "orders": self._extract_orders,
@@ -673,58 +787,102 @@ class AmazonClient(PlatformClient):
         return await handler(columns=columns, limit=limit, cursor=cursor,
                              start_date=start_date, end_date=end_date)
 
-    # -- Orders (with OrderItems) ---------------------------------------------
+    # -- Orders (via Reports API) ----------------------------------------------
 
     async def _extract_orders(
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
         start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
+        """注文データをReports APIで一括取得する。
+
+        1. レポート生成をリクエスト (createReport)
+        2. ポーリングで完了を待つ (getReport)
+        3. ドキュメントをダウンロード (getReportDocument)
+        4. TSVをパースしてフラット化
+        """
+        import csv
+        import gzip
+        import io
+
+        # 日付範囲
         if start_date:
-            created_after = f"{start_date}T00:00:00Z"
+            data_start = f"{start_date}T00:00:00Z"
         else:
-            created_after = (
+            data_start = (
                 datetime.now(timezone.utc) - timedelta(days=30)
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
-        params: dict[str, Any] = {
-            "MarketplaceIds": self._marketplace_id,
-            "CreatedAfter": created_after,
-            "MaxResultsPerPage": min(limit, 100),
+        data_end = f"{end_date}T23:59:59Z" if end_date else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        report_type = "GET_FLAT_FILE_ALL_ORDERS_DATA_BY_LAST_UPDATE_GENERAL"
+
+        # Step 1: レポート生成リクエスト
+        logger.info("Amazon Reports API: レポート生成リクエスト (%s)", report_type)
+        create_body = {
+            "reportType": report_type,
+            "marketplaceIds": [self._marketplace_id],
+            "dataStartTime": data_start,
+            "dataEndTime": data_end,
         }
-        if end_date:
-            params["CreatedBefore"] = f"{end_date}T23:59:59Z"
-        if cursor:
-            params["NextToken"] = cursor
+        create_resp = await self._sp_api_post("/reports/2021-06-30/reports", json_body=create_body)
+        report_id = create_resp.get("reportId")
+        if not report_id:
+            raise ValueError(f"レポート生成に失敗: {create_resp}")
+        logger.info("Amazon Reports API: レポートID=%s を生成中...", report_id)
 
-        body = await self._sp_api_get("/orders/v0/orders", params=params)
-        payload = body.get("payload", body)
-        raw_orders = payload.get("Orders", [])
+        # Step 2: レポート完了をポーリング (最大10分)
+        max_wait = 600
+        waited = 0
+        poll_interval = 15
+        document_id = None
+        while waited < max_wait:
+            await asyncio.sleep(poll_interval)
+            waited += poll_interval
+            status_resp = await self._sp_api_get(f"/reports/2021-06-30/reports/{report_id}")
+            status = status_resp.get("processingStatus", "")
+            logger.info("Amazon Reports API: ステータス=%s (%d秒経過)", status, waited)
+            if status == "DONE":
+                document_id = status_resp.get("reportDocumentId")
+                break
+            elif status in ("CANCELLED", "FATAL"):
+                raise ValueError(f"レポート生成失敗: status={status}")
 
-        # Fetch OrderItems for each order
+        if not document_id:
+            raise ValueError(f"レポート生成タイムアウト ({max_wait}秒)")
+
+        # Step 3: ドキュメント情報取得 → ダウンロード
+        doc_resp = await self._sp_api_get(f"/reports/2021-06-30/documents/{document_id}")
+        doc_url = doc_resp.get("url")
+        compression = doc_resp.get("compressionAlgorithm", "")
+        if not doc_url:
+            raise ValueError(f"ドキュメントURL取得失敗: {doc_resp}")
+
+        logger.info("Amazon Reports API: ドキュメントダウンロード中...")
+        raw_bytes = await self._sp_api_get_raw(doc_url)
+
+        # gzip 圧縮の場合は解凍
+        if compression == "GZIP":
+            raw_bytes = gzip.decompress(raw_bytes)
+
+        # Step 4: TSVパース
+        text = raw_bytes.decode("utf-8-sig")  # BOM付きUTF-8対応
+        reader = csv.DictReader(io.StringIO(text), delimiter="\t")
+
+        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["orders"]["fields"]]
         records = []
-        for order in raw_orders:
-            order_id = order.get("AmazonOrderId")
-            order_items = []
-            try:
-                items_resp = await self._sp_api_get(
-                    f"/orders/v0/orders/{order_id}/orderItems"
-                )
-                items_payload = items_resp.get("payload", items_resp)
-                order_items = items_payload.get("OrderItems", [])
-            except Exception:
-                logger.warning("Failed to fetch items for order %s", order_id)
-
-            flat = _flatten_order(order, order_items)
+        for row in reader:
+            if len(records) >= limit:
+                break
+            flat = _flatten_report_order(row)
             if columns:
                 flat = {k: flat.get(k) for k in columns}
             records.append(flat)
 
-        all_columns = [f["name"] for f in ENDPOINT_SCHEMAS["orders"]["fields"]]
-        next_cursor = payload.get("NextToken")
+        logger.info("Amazon Reports API: %d件の注文を取得", len(records))
 
         return {
             "items": records,
             "columns": columns or all_columns,
-            "next_cursor": next_cursor,
+            "next_cursor": None,
             "total": len(records),
         }
 
@@ -798,9 +956,24 @@ class AmazonClient(PlatformClient):
         if cursor:
             params["nextToken"] = cursor
 
-        body = await self._sp_api_get("/fba/inventory/v1/summaries", params=params)
+        # Try FBA Inventory Summaries API (v1)
+        try:
+            body = await self._sp_api_get("/fba/inventory/v1/summaries", params=params)
+        except Exception as e:
+            logger.warning("FBA Inventory v1 failed, trying Inventory API: %s", e)
+            # Fallback: return empty with a clear message
+            return {
+                "items": [],
+                "columns": columns or [f["name"] for f in ENDPOINT_SCHEMAS["inventory"]["fields"]],
+                "next_cursor": None,
+                "total": 0,
+            }
+
         payload = body.get("payload", body)
         raw_items = payload.get("inventorySummaries", [])
+
+        # Cache ASINs for pricing endpoint to avoid redundant API call
+        self._cached_asins = [item.get("asin") for item in raw_items if item.get("asin")]
 
         records = [_flatten_inventory_summary(item) for item in raw_items]
         if columns:
@@ -826,12 +999,12 @@ class AmazonClient(PlatformClient):
         params: dict[str, Any] = {
             "marketplaceIds": self._marketplace_id,
             "pageSize": min(limit, 100),
-            "reportTypes": ",".join([
+            "reportTypes": [
                 "GET_MERCHANT_LISTINGS_ALL_DATA",
                 "GET_FLAT_FILE_OPEN_LISTINGS_DATA",
                 "GET_FLAT_FILE_ORDERS_DATA",
                 "GET_FBA_MYI_ALL_INVENTORY_DATA",
-            ]),
+            ],
         }
         if cursor:
             params["nextToken"] = cursor
@@ -860,9 +1033,37 @@ class AmazonClient(PlatformClient):
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
         start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
+        # Catalog API requires identifiers/keywords; use ASINs from inventory
+        asins = list(getattr(self, "_cached_asins", []))
+        if not asins:
+            try:
+                inv_body = await self._sp_api_get("/fba/inventory/v1/summaries", params={
+                    "marketplaceIds": self._marketplace_id,
+                    "granularityType": "Marketplace",
+                    "granularityId": self._marketplace_id,
+                })
+                inv_payload = inv_body.get("payload", inv_body)
+                for item in inv_payload.get("inventorySummaries", []):
+                    asin = item.get("asin")
+                    if asin and asin not in asins:
+                        asins.append(asin)
+                self._cached_asins = asins
+            except Exception:
+                logger.warning("Failed to fetch ASINs for catalog lookup")
+
+        if not asins:
+            return {
+                "items": [],
+                "columns": columns or [f["name"] for f in ENDPOINT_SCHEMAS["catalog"]["fields"]],
+                "next_cursor": None,
+                "total": 0,
+            }
+
         params: dict[str, Any] = {
             "marketplaceIds": self._marketplace_id,
             "includedData": "attributes,identifiers,images,salesRanks,summaries",
+            "identifiers": ",".join(asins[:min(limit, 20)]),
+            "identifiersType": "ASIN",
             "pageSize": min(limit, 20),
         }
         if cursor:
@@ -892,23 +1093,25 @@ class AmazonClient(PlatformClient):
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
         start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
-        # First, fetch ASINs from catalog/inventory to price against
-        asins: list[str] = []
-        try:
-            inv_body = await self._sp_api_get("/fba/inventory/v1/summaries", params={
-                "marketplaceIds": self._marketplace_id,
-                "granularityType": "Marketplace",
-                "granularityId": self._marketplace_id,
-            })
-            inv_payload = inv_body.get("payload", inv_body)
-            for item in inv_payload.get("inventorySummaries", []):
-                asin = item.get("asin")
-                if asin and asin not in asins:
-                    asins.append(asin)
-                if len(asins) >= min(limit, 20):
-                    break
-        except Exception:
-            logger.warning("Failed to fetch ASINs from inventory for pricing lookup")
+        # Use cached ASINs if available (populated by inventory extraction)
+        asins: list[str] = list(getattr(self, "_cached_asins", []))
+        if not asins:
+            try:
+                inv_body = await self._sp_api_get("/fba/inventory/v1/summaries", params={
+                    "marketplaceIds": self._marketplace_id,
+                    "granularityType": "Marketplace",
+                    "granularityId": self._marketplace_id,
+                })
+                inv_payload = inv_body.get("payload", inv_body)
+                for item in inv_payload.get("inventorySummaries", []):
+                    asin = item.get("asin")
+                    if asin and asin not in asins:
+                        asins.append(asin)
+                    if len(asins) >= min(limit, 20):
+                        break
+                self._cached_asins = asins
+            except Exception:
+                logger.warning("Failed to fetch ASINs from inventory for pricing lookup")
 
         if not asins:
             return {
@@ -1023,13 +1226,13 @@ class AmazonClient(PlatformClient):
         params: dict[str, Any] = {
             "marketplaceIds": self._marketplace_id,
             "pageSize": min(limit, 100),
-            "reportTypes": ",".join([
+            "reportTypes": [
                 "GET_BRAND_ANALYTICS_SEARCH_TERMS_REPORT",
                 "GET_BRAND_ANALYTICS_MARKET_BASKET_REPORT",
                 "GET_BRAND_ANALYTICS_REPEAT_PURCHASE_REPORT",
                 "GET_BRAND_ANALYTICS_ALTERNATE_ITEM_REPORT",
                 "GET_BRAND_ANALYTICS_ITEM_COMPARISON_REPORT",
-            ]),
+            ],
         }
         if cursor:
             params["nextToken"] = cursor
@@ -1058,27 +1261,29 @@ class AmazonClient(PlatformClient):
         self, *, columns: list[str] | None, limit: int, cursor: str | None,
         start_date: str | None = None, end_date: str | None = None,
     ) -> dict:
-        """Fetch Merchant Fulfillment (MFN) shipments for seller direct fulfillment."""
-        params: dict[str, Any] = {
-            "MarketplaceId": self._marketplace_id,
-            "MaxResultsPerPage": min(limit, 100),
-        }
+        """Fetch Merchant Fulfilled (MFN) orders via the Orders API with MFN filter."""
         if start_date:
-            params["ShipDateCreatedAfter"] = f"{start_date}T00:00:00Z"
+            last_updated = f"{start_date}T00:00:00Z"
         else:
-            params["ShipDateCreatedAfter"] = (
+            last_updated = (
                 datetime.now(timezone.utc) - timedelta(days=30)
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        params: dict[str, Any] = {
+            "MarketplaceIds": self._marketplace_id,
+            "LastUpdatedAfter": last_updated,
+            "FulfillmentChannels": "MFN",
+            "MaxResultsPerPage": min(limit, 100),
+        }
         if end_date:
-            params["ShipDateCreatedBefore"] = f"{end_date}T23:59:59Z"
+            params["LastUpdatedBefore"] = f"{end_date}T23:59:59Z"
         if cursor:
             params["NextToken"] = cursor
 
-        body = await self._sp_api_get("/mfn/v0/shipments", params=params)
+        body = await self._sp_api_get("/orders/v0/orders", params=params)
         payload = body.get("payload", body)
-        raw_items = payload.get("ShipmentList", [])
+        raw_items = payload.get("Orders", [])
 
-        records = [_flatten_mfn_shipment(s) for s in raw_items[:limit]]
+        records = [_flatten_mfn_order(o) for o in raw_items[:limit]]
         if columns:
             records = [{k: r.get(k) for k in columns} for r in records]
 

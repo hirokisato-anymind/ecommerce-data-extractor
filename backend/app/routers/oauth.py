@@ -124,12 +124,13 @@ async def yahoo_authorize(request: Request) -> dict:
     if proto == "https" and base.startswith("http://"):
         base = "https://" + base[len("http://"):]
     redirect_uri = base + "/api/oauth/yahoo/callback"
+    # openid + store scope required for seller API access (orders, items, etc.)
     auth_url = (
         f"{YAHOO_AUTH_URL}"
         f"?response_type=code"
         f"&client_id={client_id}"
         f"&redirect_uri={redirect_uri}"
-        f"&scope=openid"
+        f"&scope=openid+store"
     )
     return {"authorize_url": auth_url, "redirect_uri": redirect_uri}
 
@@ -195,6 +196,21 @@ async def yahoo_callback(
         _update_setting("YAHOO_REFRESH_TOKEN", refresh_token)
 
     logger.info("Yahoo OAuth completed")
+
+    # Track OAuth token expiry (refresh_token valid for 28 days)
+    try:
+        from datetime import datetime, timedelta, timezone as tz
+        from app.core.notifications import upsert_expiry_record
+        expires_at = (datetime.now(tz.utc) + timedelta(days=28)).isoformat()
+        upsert_expiry_record(
+            platform_id="yahoo",
+            credential_type="oauth_token",
+            label="Yahoo OAuth トークン",
+            expires_at=expires_at,
+            manually_set=False,
+        )
+    except Exception as e:
+        logger.warning("Yahoo OAuth有効期限の記録に失敗: %s", e)
 
     return HTMLResponse(content="""
     <html><body style="font-family:sans-serif;text-align:center;padding:60px">

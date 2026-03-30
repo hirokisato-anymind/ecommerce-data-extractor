@@ -56,80 +56,80 @@ SCHEMAS: dict[str, dict[str, Any]] = {
     "rms_orders": {
         "fields": [
             # 基本情報
-            {"name": "orderNumber", "type": "string", "description": "受注番号"},
-            {"name": "orderDatetime", "type": "datetime", "description": "注文日時"},
-            {"name": "orderProgress", "type": "integer", "description": "受注ステータス (100:注文確認待ち〜900:キャンセル確定)"},
-            {"name": "orderType", "type": "integer", "description": "注文種別 (1:通常, 4:定期, 5:頒布会, 6:予約)"},
-            {"name": "shopOrderCfmDatetime", "type": "datetime", "description": "注文確認日時"},
-            {"name": "orderFixDatetime", "type": "datetime", "description": "注文確定日時"},
-            {"name": "shippingCmplRptDatetime", "type": "datetime", "description": "発送完了報告日時"},
-            {"name": "remarks", "type": "string", "description": "備考"},
-            {"name": "memo", "type": "string", "description": "メモ"},
+            {"name": "orderNumber", "type": "string", "description": "受注番号", "bq_type": "STRING"},
+            {"name": "orderDatetime", "type": "datetime", "description": "注文日時", "bq_type": "TIMESTAMP"},
+            {"name": "orderProgress", "type": "integer", "description": "受注ステータス (100:注文確認待ち〜900:キャンセル確定)", "bq_type": "INTEGER"},
+            {"name": "orderType", "type": "integer", "description": "注文種別 (1:通常, 4:定期, 5:頒布会, 6:予約)", "bq_type": "INTEGER"},
+            {"name": "shopOrderCfmDatetime", "type": "datetime", "description": "注文確認日時", "bq_type": "TIMESTAMP"},
+            {"name": "orderFixDatetime", "type": "datetime", "description": "注文確定日時", "bq_type": "TIMESTAMP"},
+            {"name": "shippingCmplRptDatetime", "type": "datetime", "description": "発送完了報告日時", "bq_type": "TIMESTAMP"},
+            {"name": "remarks", "type": "string", "description": "備考", "bq_type": "STRING"},
+            {"name": "memo", "type": "string", "description": "メモ", "bq_type": "STRING"},
             # 金額
-            {"name": "goodsPrice", "type": "integer", "description": "商品合計金額"},
-            {"name": "goodsTax", "type": "integer", "description": "商品税額"},
-            {"name": "postagePrice", "type": "integer", "description": "送料"},
-            {"name": "deliveryPrice", "type": "integer", "description": "代引料"},
-            {"name": "paymentCharge", "type": "integer", "description": "決済手数料"},
-            {"name": "totalPrice", "type": "integer", "description": "合計金額"},
-            {"name": "requestPrice", "type": "integer", "description": "請求金額"},
-            {"name": "couponAllTotalPrice", "type": "integer", "description": "クーポン合計"},
-            {"name": "couponShopPrice", "type": "integer", "description": "店舗負担クーポン"},
+            {"name": "goodsPrice", "type": "integer", "description": "商品合計金額", "bq_type": "INTEGER"},
+            {"name": "goodsTax", "type": "integer", "description": "商品税額", "bq_type": "INTEGER"},
+            {"name": "postagePrice", "type": "integer", "description": "送料", "bq_type": "INTEGER"},
+            {"name": "deliveryPrice", "type": "integer", "description": "代引料", "bq_type": "INTEGER"},
+            {"name": "paymentCharge", "type": "integer", "description": "決済手数料", "bq_type": "INTEGER"},
+            {"name": "totalPrice", "type": "integer", "description": "合計金額", "bq_type": "INTEGER"},
+            {"name": "requestPrice", "type": "integer", "description": "請求金額", "bq_type": "INTEGER"},
+            {"name": "couponAllTotalPrice", "type": "integer", "description": "クーポン合計", "bq_type": "INTEGER"},
+            {"name": "couponShopPrice", "type": "integer", "description": "店舗負担クーポン", "bq_type": "INTEGER"},
             # 決済
-            {"name": "settlementMethod", "type": "string", "description": "決済方法"},
-            {"name": "cardName", "type": "string", "description": "カードブランド"},
-            {"name": "cardPayType", "type": "integer", "description": "カード支払区分 (0:一括, 1:リボ, 2:分割等)"},
+            {"name": "settlementMethod", "type": "string", "description": "決済方法", "bq_type": "STRING"},
+            {"name": "cardName", "type": "string", "description": "カードブランド", "bq_type": "STRING"},
+            {"name": "cardPayType", "type": "integer", "description": "カード支払区分 (0:一括, 1:リボ, 2:分割等)", "bq_type": "INTEGER"},
             # 購入者情報
-            {"name": "customerName", "type": "string", "description": "購入者氏名"},
-            {"name": "customerNameKana", "type": "string", "description": "購入者氏名(カナ)"},
-            {"name": "customerPrefecture", "type": "string", "description": "購入者都道府県"},
-            {"name": "customerCity", "type": "string", "description": "購入者市区町村"},
-            {"name": "customerZipCode", "type": "string", "description": "購入者郵便番号"},
-            {"name": "customerPhone", "type": "string", "description": "購入者電話番号"},
-            {"name": "customerEmail", "type": "string", "description": "購入者メール"},
-            {"name": "customerSex", "type": "string", "description": "購入者性別"},
+            {"name": "customerName", "type": "string", "description": "購入者氏名", "bq_type": "STRING"},
+            {"name": "customerNameKana", "type": "string", "description": "購入者氏名(カナ)", "bq_type": "STRING"},
+            {"name": "customerPrefecture", "type": "string", "description": "購入者都道府県", "bq_type": "STRING"},
+            {"name": "customerCity", "type": "string", "description": "購入者市区町村", "bq_type": "STRING"},
+            {"name": "customerZipCode", "type": "string", "description": "購入者郵便番号", "bq_type": "STRING"},
+            {"name": "customerPhone", "type": "string", "description": "購入者電話番号", "bq_type": "STRING"},
+            {"name": "customerEmail", "type": "string", "description": "購入者メール", "bq_type": "STRING"},
+            {"name": "customerSex", "type": "string", "description": "購入者性別", "bq_type": "STRING"},
             # 送付先
-            {"name": "deliveryName", "type": "string", "description": "送付先氏名"},
-            {"name": "deliveryPrefecture", "type": "string", "description": "送付先都道府県"},
-            {"name": "deliveryCity", "type": "string", "description": "送付先市区町村"},
-            {"name": "deliveryZipCode", "type": "string", "description": "送付先郵便番号"},
-            {"name": "deliveryPhone", "type": "string", "description": "送付先電話番号"},
+            {"name": "deliveryName", "type": "string", "description": "送付先氏名", "bq_type": "STRING"},
+            {"name": "deliveryPrefecture", "type": "string", "description": "送付先都道府県", "bq_type": "STRING"},
+            {"name": "deliveryCity", "type": "string", "description": "送付先市区町村", "bq_type": "STRING"},
+            {"name": "deliveryZipCode", "type": "string", "description": "送付先郵便番号", "bq_type": "STRING"},
+            {"name": "deliveryPhone", "type": "string", "description": "送付先電話番号", "bq_type": "STRING"},
             # 商品情報 (最初のパッケージの全商品を結合)
-            {"name": "itemCount", "type": "integer", "description": "商品点数"},
-            {"name": "itemNames", "type": "string", "description": "商品名一覧"},
-            {"name": "itemNumbers", "type": "string", "description": "商品番号一覧"},
-            {"name": "itemPrices", "type": "string", "description": "商品単価一覧"},
-            {"name": "itemUnits", "type": "string", "description": "商品数量一覧"},
-            {"name": "selectedChoices", "type": "string", "description": "選択肢一覧"},
+            {"name": "itemCount", "type": "integer", "description": "商品点数", "bq_type": "INTEGER"},
+            {"name": "itemNames", "type": "string", "description": "商品名一覧", "bq_type": "STRING"},
+            {"name": "itemNumbers", "type": "string", "description": "商品番号一覧", "bq_type": "STRING"},
+            {"name": "itemPrices", "type": "string", "description": "商品単価一覧", "bq_type": "STRING"},
+            {"name": "itemUnits", "type": "string", "description": "商品数量一覧", "bq_type": "STRING"},
+            {"name": "selectedChoices", "type": "string", "description": "選択肢一覧", "bq_type": "STRING"},
             # フラグ
-            {"name": "giftCheckFlag", "type": "integer", "description": "ギフトフラグ"},
-            {"name": "asurakuFlag", "type": "integer", "description": "あす楽フラグ"},
-            {"name": "rakutenMemberFlag", "type": "integer", "description": "楽天会員フラグ"},
-            {"name": "usedPoint", "type": "integer", "description": "利用ポイント"},
+            {"name": "giftCheckFlag", "type": "integer", "description": "ギフトフラグ", "bq_type": "INTEGER"},
+            {"name": "asurakuFlag", "type": "integer", "description": "あす楽フラグ", "bq_type": "INTEGER"},
+            {"name": "rakutenMemberFlag", "type": "integer", "description": "楽天会員フラグ", "bq_type": "INTEGER"},
+            {"name": "usedPoint", "type": "integer", "description": "利用ポイント", "bq_type": "INTEGER"},
             # 配送
-            {"name": "deliveryMethod", "type": "string", "description": "配送方法"},
-            {"name": "noshi", "type": "string", "description": "のし情報"},
+            {"name": "deliveryMethod", "type": "string", "description": "配送方法", "bq_type": "STRING"},
+            {"name": "noshi", "type": "string", "description": "のし情報", "bq_type": "STRING"},
         ],
     },
     "rms_items": {
         "fields": [
-            {"name": "manageNumber", "type": "string", "description": "商品管理番号"},
-            {"name": "title", "type": "string", "description": "商品名"},
-            {"name": "genreId", "type": "string", "description": "ジャンルID"},
-            {"name": "itemType", "type": "string", "description": "商品タイプ (NORMAL等)"},
-            {"name": "standardPrice", "type": "integer", "description": "販売価格（先頭バリアント）"},
-            {"name": "hideItem", "type": "boolean", "description": "非表示フラグ"},
-            {"name": "created", "type": "datetime", "description": "登録日時"},
-            {"name": "updated", "type": "datetime", "description": "更新日時"},
+            {"name": "manageNumber", "type": "string", "description": "商品管理番号", "bq_type": "STRING"},
+            {"name": "title", "type": "string", "description": "商品名", "bq_type": "STRING"},
+            {"name": "genreId", "type": "string", "description": "ジャンルID", "bq_type": "STRING"},
+            {"name": "itemType", "type": "string", "description": "商品タイプ (NORMAL等)", "bq_type": "STRING"},
+            {"name": "standardPrice", "type": "integer", "description": "販売価格（先頭バリアント）", "bq_type": "INTEGER"},
+            {"name": "hideItem", "type": "boolean", "description": "非表示フラグ", "bq_type": "BOOLEAN"},
+            {"name": "created", "type": "datetime", "description": "登録日時", "bq_type": "TIMESTAMP"},
+            {"name": "updated", "type": "datetime", "description": "更新日時", "bq_type": "TIMESTAMP"},
         ],
     },
     "rms_inventory": {
         "fields": [
-            {"name": "manageNumber", "type": "string", "description": "商品管理番号"},
-            {"name": "variantId", "type": "string", "description": "バリアントID"},
-            {"name": "quantity", "type": "integer", "description": "在庫数"},
-            {"name": "created", "type": "datetime", "description": "登録日時"},
-            {"name": "updated", "type": "datetime", "description": "更新日時"},
+            {"name": "manageNumber", "type": "string", "description": "商品管理番号", "bq_type": "STRING"},
+            {"name": "variantId", "type": "string", "description": "バリアントID", "bq_type": "STRING"},
+            {"name": "quantity", "type": "integer", "description": "在庫数", "bq_type": "INTEGER"},
+            {"name": "created", "type": "datetime", "description": "登録日時", "bq_type": "TIMESTAMP"},
+            {"name": "updated", "type": "datetime", "description": "更新日時", "bq_type": "TIMESTAMP"},
         ],
     },
 }
@@ -451,7 +451,16 @@ class RakutenClient(PlatformClient):
             resp.raise_for_status()
             return resp.json()
 
-        data = await retry_on_429(_do_items_search)
+        try:
+            data = await retry_on_429(_do_items_search)
+        except Exception as e:
+            logger.error("RMS Items Search API failed: %s", e)
+            return {
+                "items": [],
+                "columns": columns or [f["name"] for f in SCHEMAS["rms_items"]["fields"]],
+                "next_cursor": None,
+                "total": 0,
+            }
 
         raw_results = data.get("results", [])
         total = data.get("numFound")
@@ -521,7 +530,16 @@ class RakutenClient(PlatformClient):
             resp.raise_for_status()
             return resp.json()
 
-        items_data = await retry_on_429(_do_inv_items)
+        try:
+            items_data = await retry_on_429(_do_inv_items)
+        except Exception as e:
+            logger.error("RMS Items Search for inventory failed: %s", e)
+            return {
+                "items": [],
+                "columns": columns or [f["name"] for f in SCHEMAS["rms_inventory"]["fields"]],
+                "next_cursor": None,
+                "total": 0,
+            }
 
         raw_results = items_data.get("results", [])
         next_cursor_mark = items_data.get("nextCursorMark")

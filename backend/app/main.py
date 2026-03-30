@@ -19,7 +19,7 @@ logging.basicConfig(
     force=True,
 )
 
-from app.routers import bigquery, credentials, endpoints, export, extract, oauth, platforms, schedule, schema
+from app.routers import auth, bigquery, credentials, endpoints, expiry, export, extract, notification_settings, oauth, platforms, schedule, schema
 
 
 @asynccontextmanager
@@ -36,6 +36,13 @@ async def lifespan(app_instance):
         load_credentials_from_storage()
     except Exception:
         _logger.warning("Failed to load credentials from storage", exc_info=True)
+
+    # Ensure expiry check Cloud Scheduler job exists
+    try:
+        from app.core.cloud_scheduler import ensure_expiry_check_job
+        ensure_expiry_check_job()
+    except Exception:
+        _logger.warning("Failed to create expiry check job", exc_info=True)
 
     yield
 
@@ -69,6 +76,9 @@ app.include_router(credentials.router, prefix="/api")
 app.include_router(oauth.router, prefix="/api")
 app.include_router(schedule.router, prefix="/api")
 app.include_router(bigquery.router, prefix="/api")
+app.include_router(auth.router, prefix="/api")
+app.include_router(expiry.router, prefix="/api")
+app.include_router(notification_settings.router, prefix="/api")
 
 
 @app.get("/")

@@ -6,8 +6,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, HTTPException
+from pydantic import BaseModel, Field, model_validator
 
 from app.core.storage import is_cloud_mode, load_gcs_json, save_gcs_json
 
@@ -26,7 +26,15 @@ class DestinationConfig(BaseModel):
     table_id: str
     transfer_mode: str  # append, append_direct, replace, delete_in_advance, upsert
     key_columns: list[str] = []  # upsert, delete_in_advance用
-    location: str = "US"  # BigQueryロケーション/リージョン
+    location: str = "asia-northeast1"  # BigQueryロケーション/リージョン
+
+    @model_validator(mode="after")
+    def _validate_key_columns(self):
+        if self.transfer_mode in ("upsert", "delete_in_advance") and not self.key_columns:
+            raise ValueError(
+                f"転送モード '{self.transfer_mode}' にはキーカラムの指定が必要です"
+            )
+        return self
 
 
 class ScheduleConfig(BaseModel):
@@ -66,7 +74,7 @@ class ScheduleCreate(BaseModel):
     endpoint_id: str
     columns: list[str] | None = None
     filters: list[dict] | None = None
-    limit: int = Field(1000, ge=1, le=10000)
+    limit: int = Field(10000, ge=1, le=50000)
     destination: DestinationConfig
     schedule_config: ScheduleConfig
     enabled: bool = True
@@ -78,7 +86,7 @@ class ScheduleUpdate(BaseModel):
     endpoint_id: str | None = None
     columns: list[str] | None = None
     filters: list[dict] | None = None
-    limit: int | None = Field(None, ge=1, le=10000)
+    limit: int | None = Field(None, ge=1, le=50000)
     destination: DestinationConfig | None = None
     schedule_config: ScheduleConfig | None = None
     enabled: bool | None = None
@@ -91,7 +99,7 @@ class Schedule(BaseModel):
     endpoint_id: str
     columns: list[str] | None = None
     filters: list[dict] | None = None
-    limit: int = 1000
+    limit: int = 10000
     destination: DestinationConfig = DestinationConfig(
         project_id="", dataset_id="", table_id="", transfer_mode="append",
     )
@@ -101,6 +109,7 @@ class Schedule(BaseModel):
     updated_at: str = ""
     last_run_at: str | None = None
     last_run_status: str | None = None
+    last_synced_at: str | None = None  # 最新のupdatedAt値（増分取得用）
 
 
 def _load_schedules() -> list[dict]:
@@ -253,8 +262,8 @@ async def delete_schedule(schedule_id: str) -> None:
 
 
 @router.post("/{schedule_id}/run")
-async def trigger_schedule(schedule_id: str) -> dict:
-    """スケジュールを即座に実行し、完了を待って結果を返す。"""
+async def trigger_schedule(schedule_id: str, background_tasks: BackgroundTasks) -> dict:
+    """スケジュールをバックグラウンドで実行開始する。"""
     schedules = _load_schedules()
     schedule_data = None
     for s in schedules:
@@ -265,6 +274,18 @@ async def trigger_schedule(schedule_id: str) -> dict:
         raise HTTPException(status_code=404, detail=f"スケジュール '{schedule_id}' が見つかりません")
 
     from app.core.scheduler import _execute_scheduled_job
-    await _execute_scheduled_job(schedule_data)
 
-    return {"ok": True, "message": f"ジョブ '{schedule_data.get('name', schedule_id)}' の実行が完了しました"}
+    async def _run():
+        await _execute_scheduled_job(schedule_data)
+
+    background_tasks.add_task(_run)
+
+    return {"ok": True, "message": f"ジョブ '{schedule_data.get('name', schedule_id)}' の実行を開始しました"}
+
+
+@router.get("/{schedule_id}/logs")
+async def get_job_logs(schedule_id: str, after: int = 0) -> dict:
+    """ジョブの実行ログを取得する。"""
+    from app.core.job_logs import get_logs
+    entries = get_logs(schedule_id, after_index=after)
+    return {"logs": entries, "next_index": after + len(entries)}

@@ -57,7 +57,7 @@ query Products($limit: Int!, $cursor: String, $query: String) {
 """,
     "orders": """
 query Orders($limit: Int!, $cursor: String, $query: String) {
-  orders(first: $limit, after: $cursor, query: $query) {
+  orders(first: $limit, after: $cursor, query: $query, sortKey: CREATED_AT, reverse: true) {
     edges {
       node {
         id
@@ -126,8 +126,8 @@ query Orders($limit: Int!, $cursor: String, $query: String) {
           country
           zip
         }
-        financialStatus
-        fulfillmentStatus
+        displayFinancialStatus
+        displayFulfillmentStatus
         createdAt
         updatedAt
         lineItems(first: 50) {
@@ -151,7 +151,7 @@ query Orders($limit: Int!, $cursor: String, $query: String) {
 """,
     "customers": """
 query Customers($limit: Int!, $cursor: String, $query: String) {
-  customers(first: $limit, after: $cursor, query: $query) {
+  customers(first: $limit, after: $cursor, query: $query, sortKey: CREATED_AT, reverse: true) {
     edges {
       node {
         id
@@ -163,8 +163,6 @@ query Customers($limit: Int!, $cursor: String, $query: String) {
         locale
         note
         numberOfOrders
-        ordersCount
-        totalSpent
         verifiedEmail
         taxExempt
         state
@@ -205,7 +203,6 @@ query InventoryItems($limit: Int!, $cursor: String) {
         inventoryLevels(first: 10) {
           edges {
             node {
-              available
               quantities(names: ["available", "committed", "damaged", "incoming", "on_hand", "quality_control", "reserved", "safety_stock"]) {
                 name
                 quantity
@@ -235,108 +232,106 @@ query InventoryItems($limit: Int!, $cursor: String) {
 ENDPOINT_SCHEMAS: dict[str, dict] = {
     "products": {
         "fields": [
-            {"name": "id", "type": "string", "description": "商品ID (GID)"},
-            {"name": "title", "type": "string", "description": "商品名"},
-            {"name": "description", "type": "string", "description": "商品説明（テキスト）"},
-            {"name": "descriptionHtml", "type": "string", "description": "商品説明（HTML）"},
-            {"name": "handle", "type": "string", "description": "URLスラッグ（商品ハンドル）"},
-            {"name": "vendor", "type": "string", "description": "販売元"},
-            {"name": "productType", "type": "string", "description": "商品タイプ"},
-            {"name": "status", "type": "string", "description": "商品ステータス (ACTIVE/ARCHIVED/DRAFT)"},
-            {"name": "tags", "type": "list", "description": "商品タグ"},
-            {"name": "publishedAt", "type": "datetime", "description": "公開日時"},
-            {"name": "createdAt", "type": "datetime", "description": "作成日時"},
-            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時"},
-            {"name": "totalInventory", "type": "integer", "description": "全バリエーション合計在庫数"},
-            {"name": "tracksInventory", "type": "boolean", "description": "在庫追跡の有無"},
-            {"name": "isGiftCard", "type": "boolean", "description": "ギフトカード商品かどうか"},
-            {"name": "hasOnlyDefaultVariant", "type": "boolean", "description": "デフォルトバリエーションのみかどうか"},
-            {"name": "variants", "type": "list", "description": "バリエーション一覧 (id, title, sku, price, inventoryQuantity)"},
+            {"name": "id", "type": "string", "description": "商品ID (GID)", "bq_type": "STRING"},
+            {"name": "title", "type": "string", "description": "商品名", "bq_type": "STRING"},
+            {"name": "description", "type": "string", "description": "商品説明（テキスト）", "bq_type": "STRING"},
+            {"name": "descriptionHtml", "type": "string", "description": "商品説明（HTML）", "bq_type": "STRING"},
+            {"name": "handle", "type": "string", "description": "URLスラッグ（商品ハンドル）", "bq_type": "STRING"},
+            {"name": "vendor", "type": "string", "description": "販売元", "bq_type": "STRING"},
+            {"name": "productType", "type": "string", "description": "商品タイプ", "bq_type": "STRING"},
+            {"name": "status", "type": "string", "description": "商品ステータス (ACTIVE/ARCHIVED/DRAFT)", "bq_type": "STRING"},
+            {"name": "tags", "type": "list", "description": "商品タグ", "bq_type": "JSON"},
+            {"name": "publishedAt", "type": "datetime", "description": "公開日時", "bq_type": "TIMESTAMP"},
+            {"name": "createdAt", "type": "datetime", "description": "作成日時", "bq_type": "TIMESTAMP"},
+            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
+            {"name": "totalInventory", "type": "integer", "description": "全バリエーション合計在庫数", "bq_type": "INTEGER"},
+            {"name": "tracksInventory", "type": "boolean", "description": "在庫追跡の有無", "bq_type": "BOOLEAN"},
+            {"name": "isGiftCard", "type": "boolean", "description": "ギフトカード商品かどうか", "bq_type": "BOOLEAN"},
+            {"name": "hasOnlyDefaultVariant", "type": "boolean", "description": "デフォルトバリエーションのみかどうか", "bq_type": "BOOLEAN"},
+            {"name": "variants", "type": "list", "description": "バリエーション一覧 (id, title, sku, price, inventoryQuantity)", "bq_type": "JSON"},
         ],
     },
     "orders": {
         "fields": [
-            {"name": "id", "type": "string", "description": "注文ID (GID)"},
-            {"name": "name", "type": "string", "description": "注文番号 (例: #1001)"},
-            {"name": "email", "type": "string", "description": "購入者メールアドレス"},
-            {"name": "phone", "type": "string", "description": "購入者電話番号"},
-            {"name": "cancelledAt", "type": "datetime", "description": "キャンセル日時"},
-            {"name": "cancelReason", "type": "string", "description": "キャンセル理由"},
-            {"name": "closedAt", "type": "datetime", "description": "クローズ日時"},
-            {"name": "confirmationNumber", "type": "string", "description": "注文確認番号"},
-            {"name": "discountCode", "type": "string", "description": "適用ディスカウントコード"},
-            {"name": "discountCodes", "type": "list", "description": "適用ディスカウントコード一覧"},
-            {"name": "processedAt", "type": "datetime", "description": "処理日時"},
-            {"name": "sourceName", "type": "string", "description": "注文元 (web, pos等)"},
-            {"name": "subtotalLineItemsQuantity", "type": "integer", "description": "明細合計数量"},
-            {"name": "tags", "type": "list", "description": "注文タグ"},
-            {"name": "taxesIncluded", "type": "boolean", "description": "税込価格かどうか"},
-            {"name": "test", "type": "boolean", "description": "テスト注文かどうか"},
-            {"name": "totalWeight", "type": "number", "description": "合計重量 (グラム)"},
-            {"name": "note", "type": "string", "description": "注文メモ"},
-            {"name": "totalAmount", "type": "number", "description": "合計金額"},
-            {"name": "totalCurrency", "type": "string", "description": "通貨コード"},
-            {"name": "subtotalAmount", "type": "number", "description": "小計金額"},
-            {"name": "shippingAmount", "type": "number", "description": "送料合計"},
-            {"name": "taxAmount", "type": "number", "description": "税額合計"},
-            {"name": "discountAmount", "type": "number", "description": "割引合計"},
-            {"name": "refundedAmount", "type": "number", "description": "返金合計"},
-            {"name": "shippingName", "type": "string", "description": "配送先氏名"},
-            {"name": "shippingAddress1", "type": "string", "description": "配送先住所1"},
-            {"name": "shippingAddress2", "type": "string", "description": "配送先住所2"},
-            {"name": "shippingCity", "type": "string", "description": "配送先市区町村"},
-            {"name": "shippingProvince", "type": "string", "description": "配送先都道府県"},
-            {"name": "shippingCountry", "type": "string", "description": "配送先国"},
-            {"name": "shippingZip", "type": "string", "description": "配送先郵便番号"},
-            {"name": "shippingPhone", "type": "string", "description": "配送先電話番号"},
-            {"name": "billingAddress1", "type": "string", "description": "請求先住所1"},
-            {"name": "billingCity", "type": "string", "description": "請求先市区町村"},
-            {"name": "billingProvince", "type": "string", "description": "請求先都道府県"},
-            {"name": "billingCountry", "type": "string", "description": "請求先国"},
-            {"name": "billingZip", "type": "string", "description": "請求先郵便番号"},
-            {"name": "financialStatus", "type": "string", "description": "決済ステータス"},
-            {"name": "fulfillmentStatus", "type": "string", "description": "フルフィルメントステータス"},
-            {"name": "createdAt", "type": "datetime", "description": "作成日時"},
-            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時"},
-            {"name": "lineItems", "type": "list", "description": "明細行 (title, quantity, sku)"},
+            {"name": "id", "type": "string", "description": "注文ID (GID)", "bq_type": "STRING"},
+            {"name": "name", "type": "string", "description": "注文番号 (例: #1001)", "bq_type": "STRING"},
+            {"name": "email", "type": "string", "description": "購入者メールアドレス", "bq_type": "STRING"},
+            {"name": "phone", "type": "string", "description": "購入者電話番号", "bq_type": "STRING"},
+            {"name": "cancelledAt", "type": "datetime", "description": "キャンセル日時", "bq_type": "TIMESTAMP"},
+            {"name": "cancelReason", "type": "string", "description": "キャンセル理由", "bq_type": "STRING"},
+            {"name": "closedAt", "type": "datetime", "description": "クローズ日時", "bq_type": "TIMESTAMP"},
+            {"name": "confirmationNumber", "type": "string", "description": "注文確認番号", "bq_type": "STRING"},
+            {"name": "discountCode", "type": "string", "description": "適用ディスカウントコード", "bq_type": "STRING"},
+            {"name": "discountCodes", "type": "list", "description": "適用ディスカウントコード一覧", "bq_type": "JSON"},
+            {"name": "processedAt", "type": "datetime", "description": "処理日時", "bq_type": "TIMESTAMP"},
+            {"name": "sourceName", "type": "string", "description": "注文元 (web, pos等)", "bq_type": "STRING"},
+            {"name": "subtotalLineItemsQuantity", "type": "integer", "description": "明細合計数量", "bq_type": "INTEGER"},
+            {"name": "tags", "type": "list", "description": "注文タグ", "bq_type": "JSON"},
+            {"name": "taxesIncluded", "type": "boolean", "description": "税込価格かどうか", "bq_type": "BOOLEAN"},
+            {"name": "test", "type": "boolean", "description": "テスト注文かどうか", "bq_type": "BOOLEAN"},
+            {"name": "totalWeight", "type": "number", "description": "合計重量 (グラム)", "bq_type": "FLOAT"},
+            {"name": "note", "type": "string", "description": "注文メモ", "bq_type": "STRING"},
+            {"name": "totalAmount", "type": "number", "description": "合計金額", "bq_type": "FLOAT"},
+            {"name": "totalCurrency", "type": "string", "description": "通貨コード", "bq_type": "STRING"},
+            {"name": "subtotalAmount", "type": "number", "description": "小計金額", "bq_type": "FLOAT"},
+            {"name": "shippingAmount", "type": "number", "description": "送料合計", "bq_type": "FLOAT"},
+            {"name": "taxAmount", "type": "number", "description": "税額合計", "bq_type": "FLOAT"},
+            {"name": "discountAmount", "type": "number", "description": "割引合計", "bq_type": "FLOAT"},
+            {"name": "refundedAmount", "type": "number", "description": "返金合計", "bq_type": "FLOAT"},
+            {"name": "shippingName", "type": "string", "description": "配送先氏名", "bq_type": "STRING"},
+            {"name": "shippingAddress1", "type": "string", "description": "配送先住所1", "bq_type": "STRING"},
+            {"name": "shippingAddress2", "type": "string", "description": "配送先住所2", "bq_type": "STRING"},
+            {"name": "shippingCity", "type": "string", "description": "配送先市区町村", "bq_type": "STRING"},
+            {"name": "shippingProvince", "type": "string", "description": "配送先都道府県", "bq_type": "STRING"},
+            {"name": "shippingCountry", "type": "string", "description": "配送先国", "bq_type": "STRING"},
+            {"name": "shippingZip", "type": "string", "description": "配送先郵便番号", "bq_type": "STRING"},
+            {"name": "shippingPhone", "type": "string", "description": "配送先電話番号", "bq_type": "STRING"},
+            {"name": "billingAddress1", "type": "string", "description": "請求先住所1", "bq_type": "STRING"},
+            {"name": "billingCity", "type": "string", "description": "請求先市区町村", "bq_type": "STRING"},
+            {"name": "billingProvince", "type": "string", "description": "請求先都道府県", "bq_type": "STRING"},
+            {"name": "billingCountry", "type": "string", "description": "請求先国", "bq_type": "STRING"},
+            {"name": "billingZip", "type": "string", "description": "請求先郵便番号", "bq_type": "STRING"},
+            {"name": "displayFinancialStatus", "type": "string", "description": "決済ステータス", "bq_type": "STRING"},
+            {"name": "displayFulfillmentStatus", "type": "string", "description": "フルフィルメントステータス", "bq_type": "STRING"},
+            {"name": "createdAt", "type": "datetime", "description": "作成日時", "bq_type": "TIMESTAMP"},
+            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
+            {"name": "lineItems", "type": "list", "description": "明細行 (title, quantity, sku)", "bq_type": "JSON"},
         ],
     },
     "customers": {
         "fields": [
-            {"name": "id", "type": "string", "description": "顧客ID (GID)"},
-            {"name": "firstName", "type": "string", "description": "名"},
-            {"name": "lastName", "type": "string", "description": "姓"},
-            {"name": "displayName", "type": "string", "description": "表示名"},
-            {"name": "email", "type": "string", "description": "メールアドレス"},
-            {"name": "phone", "type": "string", "description": "電話番号"},
-            {"name": "locale", "type": "string", "description": "言語/地域設定"},
-            {"name": "note", "type": "string", "description": "顧客メモ"},
-            {"name": "numberOfOrders", "type": "integer", "description": "注文回数"},
-            {"name": "ordersCount", "type": "integer", "description": "注文件数"},
-            {"name": "totalSpent", "type": "number", "description": "累計購入金額"},
-            {"name": "verifiedEmail", "type": "boolean", "description": "メール認証済みかどうか"},
-            {"name": "taxExempt", "type": "boolean", "description": "免税対象かどうか"},
-            {"name": "state", "type": "string", "description": "アカウント状態"},
-            {"name": "tags", "type": "list", "description": "顧客タグ"},
-            {"name": "amountSpent", "type": "number", "description": "累計購入金額 (MoneyV2)"},
-            {"name": "amountSpentCurrency", "type": "string", "description": "購入金額の通貨コード"},
-            {"name": "defaultAddress1", "type": "string", "description": "デフォルト住所1"},
-            {"name": "defaultCity", "type": "string", "description": "デフォルト市区町村"},
-            {"name": "defaultProvince", "type": "string", "description": "デフォルト都道府県"},
-            {"name": "defaultCountry", "type": "string", "description": "デフォルト国"},
-            {"name": "defaultZip", "type": "string", "description": "デフォルト郵便番号"},
-            {"name": "defaultPhone", "type": "string", "description": "デフォルト電話番号"},
-            {"name": "createdAt", "type": "datetime", "description": "作成日時"},
-            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時"},
+            {"name": "id", "type": "string", "description": "顧客ID (GID)", "bq_type": "STRING"},
+            {"name": "firstName", "type": "string", "description": "名", "bq_type": "STRING"},
+            {"name": "lastName", "type": "string", "description": "姓", "bq_type": "STRING"},
+            {"name": "displayName", "type": "string", "description": "表示名", "bq_type": "STRING"},
+            {"name": "email", "type": "string", "description": "メールアドレス", "bq_type": "STRING"},
+            {"name": "phone", "type": "string", "description": "電話番号", "bq_type": "STRING"},
+            {"name": "locale", "type": "string", "description": "言語/地域設定", "bq_type": "STRING"},
+            {"name": "note", "type": "string", "description": "顧客メモ", "bq_type": "STRING"},
+            {"name": "numberOfOrders", "type": "integer", "description": "注文回数", "bq_type": "INTEGER"},
+            {"name": "verifiedEmail", "type": "boolean", "description": "メール認証済みかどうか", "bq_type": "BOOLEAN"},
+            {"name": "taxExempt", "type": "boolean", "description": "免税対象かどうか", "bq_type": "BOOLEAN"},
+            {"name": "state", "type": "string", "description": "アカウント状態", "bq_type": "STRING"},
+            {"name": "tags", "type": "list", "description": "顧客タグ", "bq_type": "JSON"},
+            {"name": "amountSpent", "type": "number", "description": "累計購入金額 (MoneyV2)", "bq_type": "FLOAT"},
+            {"name": "amountSpentCurrency", "type": "string", "description": "購入金額の通貨コード", "bq_type": "STRING"},
+            {"name": "defaultAddress1", "type": "string", "description": "デフォルト住所1", "bq_type": "STRING"},
+            {"name": "defaultCity", "type": "string", "description": "デフォルト市区町村", "bq_type": "STRING"},
+            {"name": "defaultProvince", "type": "string", "description": "デフォルト都道府県", "bq_type": "STRING"},
+            {"name": "defaultCountry", "type": "string", "description": "デフォルト国", "bq_type": "STRING"},
+            {"name": "defaultZip", "type": "string", "description": "デフォルト郵便番号", "bq_type": "STRING"},
+            {"name": "defaultPhone", "type": "string", "description": "デフォルト電話番号", "bq_type": "STRING"},
+            {"name": "createdAt", "type": "datetime", "description": "作成日時", "bq_type": "TIMESTAMP"},
+            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
         ],
     },
     "inventory": {
         "fields": [
-            {"name": "id", "type": "string", "description": "在庫アイテムID (GID)"},
-            {"name": "sku", "type": "string", "description": "SKU"},
-            {"name": "tracked", "type": "boolean", "description": "在庫追跡の有無"},
-            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時"},
-            {"name": "inventoryLevels", "type": "list", "description": "ロケーション別在庫数 (available, quantities, locationName)"},
+            {"name": "id", "type": "string", "description": "在庫アイテムID (GID)", "bq_type": "STRING"},
+            {"name": "sku", "type": "string", "description": "SKU", "bq_type": "STRING"},
+            {"name": "tracked", "type": "boolean", "description": "在庫追跡の有無", "bq_type": "BOOLEAN"},
+            {"name": "updatedAt", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
+            {"name": "inventoryLevels", "type": "list", "description": "ロケーション別在庫数 (available, quantities, locationName)", "bq_type": "JSON"},
         ],
     },
 }
@@ -478,7 +473,15 @@ def _flatten_inventory_record(record: dict[str, Any]) -> dict[str, Any]:
     if isinstance(levels, list):
         flattened_levels: list[dict[str, Any]] = []
         for level in levels:
-            entry: dict[str, Any] = {"available": level.get("available")}
+            # Extract available quantity from quantities list
+            available = None
+            quantities = level.get("quantities", [])
+            if isinstance(quantities, list):
+                for q in quantities:
+                    if isinstance(q, dict) and q.get("name") == "available":
+                        available = q.get("quantity")
+                        break
+            entry: dict[str, Any] = {"available": available}
             location = level.get("location")
             if isinstance(location, dict):
                 entry["locationName"] = location.get("name")
@@ -550,6 +553,7 @@ class ShopifyClient(PlatformClient):
         *,
         start_date: str | None = None,
         end_date: str | None = None,
+        keyword: str | None = None,
     ) -> dict:
         """Extract data from Shopify GraphQL Admin API.
 
@@ -569,11 +573,12 @@ class ShopifyClient(PlatformClient):
             variables["cursor"] = cursor
 
         # Build Shopify query string for date range filtering
+        # Use updated_at for incremental sync (catches both new and modified records)
         query_parts: list[str] = []
         if start_date:
-            query_parts.append(f"created_at:>={start_date}")
+            query_parts.append(f"updated_at:>={start_date}")
         if end_date:
-            query_parts.append(f"created_at:<={end_date}")
+            query_parts.append(f"updated_at:<={end_date}")
         if query_parts:
             variables["query"] = " AND ".join(query_parts)
 

@@ -7,7 +7,7 @@ async function fetchAPI<T>(path: string, params?: Record<string, string>): Promi
       if (v !== undefined && v !== "") url.searchParams.set(k, v);
     });
   }
-  const res = await fetch(url.toString());
+  const res = await fetch(url.toString(), { credentials: "include" });
   if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -80,6 +80,13 @@ export interface SchedulePayload {
   enabled: boolean;
 }
 
+export interface JobLogEntry {
+  index: number;
+  timestamp: string;
+  level: "info" | "error" | "warning";
+  message: string;
+}
+
 export interface BigQueryTable {
   table_id: string;
   row_count: number;
@@ -102,7 +109,50 @@ export interface CredentialsResponse {
   oauth: boolean;
 }
 
+export interface AuthUser {
+  email: string;
+  name: string;
+  picture: string;
+}
+
+export interface ExpiryRecord {
+  platform_id: string;
+  credential_type: string;
+  label: string;
+  expires_at: string | null;
+  manually_set: boolean;
+  sent_notifications: Record<string, string | null>;
+  remaining_hours?: number | null;
+  expired?: boolean | null;
+}
+
+export interface NotificationSettingsResponse {
+  slack_webhook_url_preview: string;
+  slack_channel: string;
+  enabled: boolean;
+  has_webhook: boolean;
+}
+
 export const api = {
+  // Auth (login URL from backend, me/logout from frontend API routes)
+  getAuthLoginUrl: () =>
+    fetchAPI<{ authorize_url: string }>("/auth/login"),
+
+  getAuthUser: async (): Promise<AuthUser> => {
+    const res = await fetch("/api/auth/me", { credentials: "include" });
+    if (!res.ok) throw new Error(`Auth error: ${res.status}`);
+    return res.json();
+  },
+
+  logout: async () => {
+    const res = await fetch("/api/auth/logout", {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
+    return res.json();
+  },
+
   getPlatforms: () => fetchAPI<Platform[]>("/platforms"),
   getEndpoints: (platformId: string) =>
     fetchAPI<Endpoint[]>(`/platforms/${platformId}/endpoints`),
@@ -117,8 +167,7 @@ export const api = {
     limit?: number;
     cursor?: string;
     filters?: string;
-    start_date?: string;
-    end_date?: string;
+    keyword?: string;
     fetch_all?: boolean;
   }) => {
     const searchParams: Record<string, string> = {
@@ -129,13 +178,14 @@ export const api = {
     if (params.limit) searchParams.limit = String(params.limit);
     if (params.cursor) searchParams.cursor = params.cursor;
     if (params.filters) searchParams.filters = params.filters;
-    if (params.start_date) searchParams.start_date = params.start_date;
-    if (params.end_date) searchParams.end_date = params.end_date;
+    if (params.keyword) searchParams.keyword = params.keyword;
     if (params.fetch_all) searchParams.fetch_all = "true";
     return fetchAPI<ExtractResult>("/extract", searchParams);
   },
   getCredentials: async (platformId: string): Promise<CredentialsResponse> => {
-    const res = await fetch(`${API_BASE}/credentials/${platformId}`);
+    const res = await fetch(`${API_BASE}/credentials/${platformId}`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     return res.json();
   },
@@ -147,6 +197,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ values }),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
     return res.json();
@@ -172,26 +223,34 @@ export const api = {
 
   // BigQuery resource lists
   listBigQueryProjects: async () => {
-    const res = await fetch(`${API_BASE}/bigquery/projects`);
+    const res = await fetch(`${API_BASE}/bigquery/projects`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ projects: { project_id: string; name: string }[] }>;
   },
 
   listBigQueryDatasets: async (projectId: string) => {
-    const res = await fetch(`${API_BASE}/bigquery/datasets?project_id=${encodeURIComponent(projectId)}`);
+    const res = await fetch(`${API_BASE}/bigquery/datasets?project_id=${encodeURIComponent(projectId)}`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ datasets: string[] }>;
   },
 
   listBigQueryTablesSimple: async (projectId: string, datasetId: string) => {
-    const res = await fetch(`${API_BASE}/bigquery/tables-list?project_id=${encodeURIComponent(projectId)}&dataset_id=${encodeURIComponent(datasetId)}`);
+    const res = await fetch(`${API_BASE}/bigquery/tables-list?project_id=${encodeURIComponent(projectId)}&dataset_id=${encodeURIComponent(datasetId)}`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ tables: string[] }>;
   },
 
   // BigQuery OAuth Config
   getBigQueryOAuthConfigStatus: async () => {
-    const res = await fetch(`${API_BASE}/bigquery/oauth-config-status`);
+    const res = await fetch(`${API_BASE}/bigquery/oauth-config-status`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ configured: boolean; client_id_preview?: string }>;
   },
@@ -201,6 +260,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ ok: boolean; message: string }>;
@@ -208,13 +268,17 @@ export const api = {
 
   // BigQuery Auth
   getBigQueryAuthUrl: async () => {
-    const res = await fetch(`${API_BASE}/bigquery/auth-url`);
+    const res = await fetch(`${API_BASE}/bigquery/auth-url`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ authorize_url: string }>;
   },
 
   getBigQueryAuthStatus: async () => {
-    const res = await fetch(`${API_BASE}/bigquery/auth-status`);
+    const res = await fetch(`${API_BASE}/bigquery/auth-status`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ authenticated: boolean; email?: string; error?: string }>;
   },
@@ -224,6 +288,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ ok: boolean; datasets: string[]; error?: string }>;
@@ -234,6 +299,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ tables: BigQueryTable[] }>;
@@ -244,6 +310,7 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(params),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json() as Promise<{ columns: { name: string; type: string; mode: string }[] }>;
@@ -255,19 +322,25 @@ export const api = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
   },
 
   listSchedules: async () => {
-    const res = await fetch(`${API_BASE}/schedules/`);
+    const res = await fetch(`${API_BASE}/schedules/`, {
+      credentials: "include",
+    });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
   },
 
   deleteSchedule: async (id: string) => {
-    const res = await fetch(`${API_BASE}/schedules/${id}`, { method: "DELETE" });
+    const res = await fetch(`${API_BASE}/schedules/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
     if (!res.ok && res.status !== 204) throw new Error(`API error: ${res.status}`);
     return { ok: true };
   },
@@ -277,6 +350,7 @@ export const api = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
@@ -285,8 +359,60 @@ export const api = {
   triggerSchedule: async (id: string) => {
     const res = await fetch(`${API_BASE}/schedules/${id}/run`, {
       method: "POST",
+      credentials: "include",
     });
     if (!res.ok) throw new Error(`API error: ${res.status}`);
     return res.json();
+  },
+  getJobLogs: async (scheduleId: string, after: number = 0): Promise<{ logs: JobLogEntry[]; next_index: number }> => {
+    const res = await fetch(`${API_BASE}/schedules/${scheduleId}/logs?after=${after}`, {
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
+
+  // Credential Expiry
+  getExpiryRecords: () => fetchAPI<ExpiryRecord[]>("/expiry/"),
+
+  setRakutenLicenseExpiry: async (expiresAt: string) => {
+    const res = await fetch(`${API_BASE}/expiry/rakuten-license-key`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expires_at: expiresAt }),
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
+
+  getYahooOAuthExpiry: () => fetchAPI<ExpiryRecord>("/expiry/yahoo-oauth"),
+
+  // Notification Settings
+  getNotificationSettings: () =>
+    fetchAPI<NotificationSettingsResponse>("/notification-settings/"),
+
+  saveNotificationSettings: async (params: {
+    slack_webhook_url?: string;
+    slack_channel?: string;
+    enabled?: boolean;
+  }) => {
+    const res = await fetch(`${API_BASE}/notification-settings/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json();
+  },
+
+  testSlackNotification: async () => {
+    const res = await fetch(`${API_BASE}/notification-settings/test`, {
+      method: "POST",
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error(`API error: ${res.status}`);
+    return res.json() as Promise<{ ok: boolean; error?: string }>;
   },
 };

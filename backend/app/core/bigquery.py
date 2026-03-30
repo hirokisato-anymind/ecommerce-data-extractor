@@ -126,18 +126,65 @@ def _ensure_dataset_exists(
         logger.info("データセット %s を作成しました", dataset_ref)
 
 
+def _get_platform_bq_schema(
+    platform_id: str | None,
+    endpoint_id: str | None,
+) -> list[bigquery.SchemaField] | None:
+    """プラットフォームのスキーマ定義から BigQuery スキーマを構築する。
+    bq_type が定義されていない場合は None を返す。"""
+    if not platform_id or not endpoint_id:
+        return None
+    try:
+        schemas: dict | None = None
+        if platform_id == "rakuten":
+            from app.platforms.rakuten.client import SCHEMAS
+            schemas = SCHEMAS
+        elif platform_id == "shopify":
+            from app.platforms.shopify.client import ENDPOINT_SCHEMAS
+            schemas = ENDPOINT_SCHEMAS
+        elif platform_id == "amazon":
+            from app.platforms.amazon.client import ENDPOINT_SCHEMAS as AMAZON_SCHEMAS
+            schemas = AMAZON_SCHEMAS
+        elif platform_id == "yahoo":
+            from app.platforms.yahoo.client import ENDPOINT_SCHEMAS as YAHOO_SCHEMAS
+            schemas = YAHOO_SCHEMAS
+
+        if not schemas or endpoint_id not in schemas:
+            return None
+        schema_def = schemas[endpoint_id]
+        fields = schema_def.get("fields", []) if isinstance(schema_def, dict) else schema_def
+        if not fields or not any(f.get("bq_type") for f in fields):
+            return None
+        return [
+            bigquery.SchemaField(f["name"], f["bq_type"], mode="NULLABLE")
+            for f in fields
+            if f.get("bq_type")
+        ]
+    except Exception as e:
+        logger.warning("プラットフォームスキーマの取得に失敗 (%s/%s): %s", platform_id, endpoint_id, e)
+        return None
+
+
 def _ensure_table_exists(
     client: bigquery.Client,
     table_ref: str,
     rows: list[dict],
     location: str = "US",
+    platform_id: str | None = None,
+    endpoint_id: str | None = None,
 ) -> bigquery.Table:
-    """テーブルが存在しない場合、行データからスキーマを自動検出して作成する。
+    """テーブルが存在しない場合、プラットフォームのスキーマ定義または行データからスキーマを検出して作成する。
     データセットが存在しない場合も自動で作成する。"""
     try:
-        return client.get_table(table_ref)
+        existing = client.get_table(table_ref)
+        if existing.schema:
+            return existing
+        # Table exists but has empty schema (broken state) — drop and recreate
+        logger.warning("テーブル %s のスキーマが空のため再作成します", table_ref)
+        client.delete_table(table_ref)
     except NotFound:
-        logger.info("テーブル %s が存在しないため作成します", table_ref)
+        pass
+    logger.info("テーブル %s を作成します", table_ref)
 
     # 行データからスキーマを推定
     if not rows:
@@ -148,7 +195,13 @@ def _ensure_table_exists(
     if len(parts) == 3:
         _ensure_dataset_exists(client, parts[0], parts[1], location)
 
-    schema = _infer_schema(rows)
+    # プラットフォーム定義のスキーマを優先、なければデータから推定
+    schema = _get_platform_bq_schema(platform_id, endpoint_id)
+    if schema:
+        logger.info("プラットフォームスキーマ定義を使用 (%s/%s)", platform_id, endpoint_id)
+    else:
+        logger.warning("プラットフォームスキーマなし、データから推定します (%s/%s)", platform_id, endpoint_id)
+        schema = _infer_schema(rows)
     table = bigquery.Table(table_ref, schema=schema)
     client.create_table(table)
     logger.info("テーブル %s を作成しました（%d カラム）", table_ref, len(schema))
@@ -163,6 +216,8 @@ async def write_to_bigquery(
     mode: TransferMode,
     key_columns: list[str] | None = None,
     location: str = "US",
+    platform_id: str | None = None,
+    endpoint_id: str | None = None,
 ) -> dict:
     """BigQueryテーブルにデータを書き込む。統計情報の辞書を返す。"""
     if not rows:
@@ -181,7 +236,7 @@ async def write_to_bigquery(
     client = _get_client(project_id, location=location)
     table_ref = f"{project_id}.{dataset_id}.{table_id}"
 
-    table = _ensure_table_exists(client, table_ref, rows, location=location)
+    table = _ensure_table_exists(client, table_ref, rows, location=location, platform_id=platform_id, endpoint_id=endpoint_id)
 
     # タイムスタンプ文字列をBQ互換形式に正規化 (+0900 -> +09:00 等)
     if table.schema:
@@ -209,11 +264,14 @@ async def write_to_bigquery(
         temp_id = f"{table_id}_tmp_{int(__import__('time').time())}"
         temp_ref = f"{project_id}.{dataset_id}.{temp_id}"
         _ensure_dataset_exists(client, project_id, dataset_id, location)
-        source_table = client.get_table(table_ref)
-        temp_tbl = bigquery.Table(temp_ref, schema=source_table.schema)
+        # Use schema from the already-ensured table object instead of re-fetching
+        schema = table.schema
+        if not schema:
+            raise ValueError(f"テーブル {table_ref} のスキーマが空です。データをロードできません。")
+        temp_tbl = bigquery.Table(temp_ref, schema=schema)
         client.create_table(temp_tbl)
         cfg = bigquery.LoadJobConfig(
-            schema=source_table.schema,
+            schema=schema,
             write_disposition=bigquery.WriteDisposition.WRITE_TRUNCATE,
             source_format=bigquery.SourceFormat.NEWLINE_DELIMITED_JSON,
         )
@@ -223,8 +281,7 @@ async def write_to_bigquery(
 
     def _merge_sql(temp_ref: str, on_cols: list[str], *, update: bool) -> str:
         """MERGE SQLを構築する。update=FalseならINSERTのみ（APPEND用）。"""
-        source_table = client.get_table(table_ref)
-        all_cols = [f.name for f in source_table.schema]
+        all_cols = [f.name for f in table.schema]
         on_clause = " AND ".join(f"T.`{c}` = S.`{c}`" for c in on_cols)
         insert_cols = ", ".join(f"`{c}`" for c in all_cols)
         insert_vals = ", ".join(f"S.`{c}`" for c in all_cols)

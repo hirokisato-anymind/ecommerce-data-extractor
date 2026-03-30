@@ -170,3 +170,41 @@ def sync_all_schedules() -> None:
             logger.warning("Cloud Scheduler ジョブ作成失敗 (%s): %s", s["id"], e)
 
     logger.info("Cloud Scheduler に %d 件のジョブを同期しました", count)
+
+
+def ensure_expiry_check_job() -> None:
+    """有効期限チェック用の定期ジョブを作成する（既に存在する場合はスキップ）。"""
+    if not is_cloud_mode():
+        return
+
+    from google.api_core.exceptions import AlreadyExists
+    from google.cloud import scheduler_v1
+
+    client = scheduler_v1.CloudSchedulerClient()
+    target_url = f"{CLOUD_RUN_URL}/api/expiry/check"
+
+    job = scheduler_v1.Job(
+        name=_job_name("expiry-check"),
+        schedule="0 */6 * * *",  # Every 6 hours
+        time_zone=SCHEDULER_TIMEZONE,
+        http_target=scheduler_v1.HttpTarget(
+            uri=target_url,
+            http_method=scheduler_v1.HttpMethod.POST,
+            oidc_token=scheduler_v1.OidcToken(
+                service_account_email=SCHEDULER_SERVICE_ACCOUNT,
+                audience=CLOUD_RUN_URL,
+            ),
+        ),
+        state=scheduler_v1.Job.State.ENABLED,
+        attempt_deadline=duration_pb2.Duration(seconds=60),
+    )
+
+    try:
+        client.create_job(
+            request=scheduler_v1.CreateJobRequest(parent=_parent(), job=job)
+        )
+        logger.info("有効期限チェックジョブを作成しました")
+    except AlreadyExists:
+        logger.debug("有効期限チェックジョブは既に存在します")
+    except Exception as e:
+        logger.warning("有効期限チェックジョブの作成に失敗: %s", e)

@@ -16,6 +16,7 @@ dependencies = [
     "google-cloud-secret-manager",
     "google-cloud-storage",
     "google-cloud-resource-manager",
+    "PyJWT",
 ]
 
 [build-system]

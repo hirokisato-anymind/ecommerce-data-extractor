@@ -28,6 +28,7 @@ class PlatformClient(ABC):
         *,
         start_date: str | None = None,
         end_date: str | None = None,
+        keyword: str | None = None,
     ) -> dict:
         """Extract data from endpoint. Returns {items, columns, next_cursor, total}.
 
@@ -36,6 +37,8 @@ class PlatformClient(ABC):
         start_date, end_date : str | None
             ISO-8601 date strings (e.g. ``2024-01-01``) for date-range filtering.
             Platform clients translate these into the appropriate API parameters.
+        keyword : str | None
+            Search keyword (e.g. for Yahoo ItemSearch query parameter).
         """
         pass
 

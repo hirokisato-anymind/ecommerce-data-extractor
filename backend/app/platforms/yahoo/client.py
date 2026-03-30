@@ -82,13 +82,133 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
     },
     "seller_orders": {
         "fields": [
+            # ── 注文基本情報 ──
             {"name": "orderId", "type": "string", "description": "注文ID", "bq_type": "STRING"},
             {"name": "orderTime", "type": "datetime", "description": "注文日時", "bq_type": "TIMESTAMP"},
-            {"name": "orderStatus", "type": "string", "description": "注文ステータス", "bq_type": "STRING"},
+            {"name": "orderStatus", "type": "integer", "description": "注文ステータス (1:予約中 2:処理中 3:保留 4:キャンセル 5:完了)", "bq_type": "INTEGER"},
+            {"name": "lastUpdateTime", "type": "datetime", "description": "最終更新日時", "bq_type": "TIMESTAMP"},
+            {"name": "deviceType", "type": "integer", "description": "デバイス種別 (1:PC 2:モバイル 3:スマホ 4:タブレット)", "bq_type": "INTEGER"},
+            {"name": "isActive", "type": "boolean", "description": "有効注文フラグ", "bq_type": "BOOLEAN"},
+            {"name": "isSplit", "type": "boolean", "description": "分割注文フラグ", "bq_type": "BOOLEAN"},
+            {"name": "parentOrderId", "type": "string", "description": "分割元注文ID", "bq_type": "STRING"},
+            {"name": "cancelReason", "type": "integer", "description": "キャンセル理由コード", "bq_type": "INTEGER"},
+            {"name": "cancelReasonDetail", "type": "string", "description": "キャンセル理由詳細", "bq_type": "STRING"},
+            {"name": "suspect", "type": "integer", "description": "悪戯注文フラグ (0/1/2)", "bq_type": "INTEGER"},
+            {"name": "buyerComments", "type": "string", "description": "購入者リクエスト・備考", "bq_type": "STRING"},
+            {"name": "notes", "type": "string", "description": "ストア内部メモ", "bq_type": "STRING"},
+            {"name": "isAffiliate", "type": "boolean", "description": "アフィリエイト注文フラグ", "bq_type": "BOOLEAN"},
+            {"name": "referer", "type": "string", "description": "リファラー情報", "bq_type": "STRING"},
+            {"name": "entryPoint", "type": "string", "description": "ストア入口URL", "bq_type": "STRING"},
+            {"name": "isYahooAuctionOrder", "type": "boolean", "description": "ヤフオク注文フラグ", "bq_type": "BOOLEAN"},
+            {"name": "sendConfirmTime", "type": "datetime", "description": "注文確認メール送信日時", "bq_type": "TIMESTAMP"},
+            {"name": "sendPayTime", "type": "datetime", "description": "入金完了メール送信日時", "bq_type": "TIMESTAMP"},
+            {"name": "printSlipTime", "type": "datetime", "description": "注文伝票印刷日時", "bq_type": "TIMESTAMP"},
+            {"name": "printDeliveryTime", "type": "datetime", "description": "納品書印刷日時", "bq_type": "TIMESTAMP"},
+            # ── 金額・明細 ──
             {"name": "totalPrice", "type": "integer", "description": "合計金額", "bq_type": "INTEGER"},
-            {"name": "paymentMethod", "type": "string", "description": "支払方法", "bq_type": "STRING"},
-            {"name": "shipStatus", "type": "string", "description": "配送ステータス", "bq_type": "STRING"},
-            {"name": "buyerName", "type": "string", "description": "購入者名", "bq_type": "STRING"},
+            {"name": "payCharge", "type": "integer", "description": "決済手数料", "bq_type": "INTEGER"},
+            {"name": "shipCharge", "type": "integer", "description": "送料", "bq_type": "INTEGER"},
+            {"name": "giftWrapCharge", "type": "integer", "description": "ギフト包装料", "bq_type": "INTEGER"},
+            {"name": "discount", "type": "integer", "description": "手動値引き額", "bq_type": "INTEGER"},
+            {"name": "adjustments", "type": "integer", "description": "調整額", "bq_type": "INTEGER"},
+            {"name": "settleAmount", "type": "integer", "description": "決済金額", "bq_type": "INTEGER"},
+            {"name": "usePoint", "type": "integer", "description": "利用ポイント数", "bq_type": "INTEGER"},
+            {"name": "giftCardDiscount", "type": "integer", "description": "ギフトカード利用額", "bq_type": "INTEGER"},
+            {"name": "totalCouponDiscount", "type": "integer", "description": "クーポン割引合計額", "bq_type": "INTEGER"},
+            {"name": "totalMallCouponDiscount", "type": "integer", "description": "モールクーポン割引合計額", "bq_type": "INTEGER"},
+            {"name": "refundTotalPrice", "type": "integer", "description": "返金合計額", "bq_type": "INTEGER"},
+            {"name": "settlePayAmount", "type": "integer", "description": "支払い済み金額", "bq_type": "INTEGER"},
+            {"name": "sellerHandlingCharge", "type": "integer", "description": "ストア負担決済手数料", "bq_type": "INTEGER"},
+            {"name": "usePaypayPoint", "type": "integer", "description": "PayPayポイント利用額", "bq_type": "INTEGER"},
+            # ── 決済 ──
+            {"name": "payStatus", "type": "integer", "description": "支払ステータス (0:未払い 1:支払済み)", "bq_type": "INTEGER"},
+            {"name": "settleStatus", "type": "integer", "description": "決済ステータスコード", "bq_type": "INTEGER"},
+            {"name": "payMethod", "type": "string", "description": "支払い方法コード", "bq_type": "STRING"},
+            {"name": "payMethodName", "type": "string", "description": "支払い方法表示名", "bq_type": "STRING"},
+            {"name": "payDate", "type": "string", "description": "入金日", "bq_type": "STRING"},
+            {"name": "cardBrand", "type": "string", "description": "クレジットカードブランド名", "bq_type": "STRING"},
+            {"name": "cardNumberLast4", "type": "string", "description": "カード番号下4桁", "bq_type": "STRING"},
+            {"name": "cardPayType", "type": "integer", "description": "カード支払い種別 (1:一括 2:分割 3:リボ 4:ボーナス)", "bq_type": "INTEGER"},
+            {"name": "cardPayCount", "type": "integer", "description": "カード分割回数", "bq_type": "INTEGER"},
+            {"name": "settleId", "type": "string", "description": "決済ID", "bq_type": "STRING"},
+            {"name": "needBillSlip", "type": "boolean", "description": "請求書要否フラグ", "bq_type": "BOOLEAN"},
+            {"name": "needReceipt", "type": "boolean", "description": "領収書要否フラグ", "bq_type": "BOOLEAN"},
+            # ── 請求先 ──
+            {"name": "billFirstName", "type": "string", "description": "請求先名（名）", "bq_type": "STRING"},
+            {"name": "billLastName", "type": "string", "description": "請求先名（姓）", "bq_type": "STRING"},
+            {"name": "billFirstNameKana", "type": "string", "description": "請求先名カナ（名）", "bq_type": "STRING"},
+            {"name": "billLastNameKana", "type": "string", "description": "請求先名カナ（姓）", "bq_type": "STRING"},
+            {"name": "billZipCode", "type": "string", "description": "請求先郵便番号", "bq_type": "STRING"},
+            {"name": "billPrefecture", "type": "string", "description": "請求先都道府県", "bq_type": "STRING"},
+            {"name": "billCity", "type": "string", "description": "請求先市区郡", "bq_type": "STRING"},
+            {"name": "billAddress1", "type": "string", "description": "請求先住所1", "bq_type": "STRING"},
+            {"name": "billAddress2", "type": "string", "description": "請求先住所2", "bq_type": "STRING"},
+            {"name": "billPhoneNumber", "type": "string", "description": "請求先電話番号", "bq_type": "STRING"},
+            {"name": "billMailAddress", "type": "string", "description": "請求先メールアドレス", "bq_type": "STRING"},
+            # ── 配送 ──
+            {"name": "shipStatus", "type": "integer", "description": "出荷ステータス (0:未出荷 1:出荷済み 2:着荷済み 3:不達 4:返品)", "bq_type": "INTEGER"},
+            {"name": "shipMethod", "type": "string", "description": "配送方法コード", "bq_type": "STRING"},
+            {"name": "shipMethodName", "type": "string", "description": "配送方法名", "bq_type": "STRING"},
+            {"name": "shipDate", "type": "string", "description": "出荷日", "bq_type": "STRING"},
+            {"name": "arrivalDate", "type": "string", "description": "着荷日", "bq_type": "STRING"},
+            {"name": "shipRequestDate", "type": "string", "description": "配送希望日", "bq_type": "STRING"},
+            {"name": "shipRequestTime", "type": "string", "description": "配送希望時間帯", "bq_type": "STRING"},
+            {"name": "shipNotes", "type": "string", "description": "配送メモ", "bq_type": "STRING"},
+            {"name": "shipCompanyCode", "type": "integer", "description": "配送会社コード", "bq_type": "INTEGER"},
+            {"name": "shipInvoiceNumber1", "type": "string", "description": "送り状番号1", "bq_type": "STRING"},
+            {"name": "shipInvoiceNumber2", "type": "string", "description": "送り状番号2", "bq_type": "STRING"},
+            {"name": "shipUrl", "type": "string", "description": "配送会社追跡URL", "bq_type": "STRING"},
+            {"name": "needGiftWrap", "type": "boolean", "description": "ギフト包装要否フラグ", "bq_type": "BOOLEAN"},
+            {"name": "giftWrapType", "type": "string", "description": "ギフト包装種別", "bq_type": "STRING"},
+            {"name": "giftWrapMessage", "type": "string", "description": "ギフトメッセージ", "bq_type": "STRING"},
+            {"name": "needGiftWrapPaper", "type": "boolean", "description": "のし要否フラグ", "bq_type": "BOOLEAN"},
+            {"name": "giftWrapPaperType", "type": "string", "description": "のし種別", "bq_type": "STRING"},
+            {"name": "giftWrapName", "type": "string", "description": "名入れ文字列", "bq_type": "STRING"},
+            {"name": "excellentDelivery", "type": "integer", "description": "優良配送フラグ", "bq_type": "INTEGER"},
+            {"name": "isEazy", "type": "boolean", "description": "EAZY/置き配フラグ", "bq_type": "BOOLEAN"},
+            {"name": "isMultiShip", "type": "boolean", "description": "複数配送先フラグ", "bq_type": "BOOLEAN"},
+            {"name": "numberUnitsShipped", "type": "integer", "description": "出荷荷物個数", "bq_type": "INTEGER"},
+            # ── お届け先 ──
+            {"name": "shipFirstName", "type": "string", "description": "お届け先名（名）", "bq_type": "STRING"},
+            {"name": "shipLastName", "type": "string", "description": "お届け先名（姓）", "bq_type": "STRING"},
+            {"name": "shipFirstNameKana", "type": "string", "description": "お届け先名カナ（名）", "bq_type": "STRING"},
+            {"name": "shipLastNameKana", "type": "string", "description": "お届け先名カナ（姓）", "bq_type": "STRING"},
+            {"name": "shipZipCode", "type": "string", "description": "お届け先郵便番号", "bq_type": "STRING"},
+            {"name": "shipPrefecture", "type": "string", "description": "お届け先都道府県", "bq_type": "STRING"},
+            {"name": "shipCity", "type": "string", "description": "お届け先市区郡", "bq_type": "STRING"},
+            {"name": "shipAddress1", "type": "string", "description": "お届け先住所1", "bq_type": "STRING"},
+            {"name": "shipAddress2", "type": "string", "description": "お届け先住所2", "bq_type": "STRING"},
+            {"name": "shipPhoneNumber", "type": "string", "description": "お届け先電話番号", "bq_type": "STRING"},
+            # ── 商品明細 ──
+            {"name": "lineId", "type": "integer", "description": "商品明細行ID", "bq_type": "INTEGER"},
+            {"name": "itemId", "type": "string", "description": "商品ID", "bq_type": "STRING"},
+            {"name": "title", "type": "string", "description": "商品名", "bq_type": "STRING"},
+            {"name": "subCode", "type": "string", "description": "商品サブコード", "bq_type": "STRING"},
+            {"name": "subCodeOption", "type": "string", "description": "サブコードオプション詳細", "bq_type": "STRING"},
+            {"name": "itemTaxRatio", "type": "integer", "description": "商品税率 (8または10)", "bq_type": "INTEGER"},
+            {"name": "unitPrice", "type": "integer", "description": "商品単価", "bq_type": "INTEGER"},
+            {"name": "quantity", "type": "integer", "description": "数量", "bq_type": "INTEGER"},
+            {"name": "jan", "type": "string", "description": "JANコード", "bq_type": "STRING"},
+            {"name": "productId", "type": "string", "description": "メーカー品番", "bq_type": "STRING"},
+            {"name": "categoryId", "type": "integer", "description": "カテゴリコード", "bq_type": "INTEGER"},
+            {"name": "pointRatioY", "type": "integer", "description": "Yahoo!ポイント付与率", "bq_type": "INTEGER"},
+            {"name": "pointRatioSeller", "type": "integer", "description": "ストアポイント付与率", "bq_type": "INTEGER"},
+            {"name": "unitGetPoint", "type": "integer", "description": "1個あたり獲得ポイント", "bq_type": "INTEGER"},
+            {"name": "couponDiscount", "type": "integer", "description": "クーポン割引額(明細)", "bq_type": "INTEGER"},
+            {"name": "couponUseNum", "type": "integer", "description": "クーポン利用数", "bq_type": "INTEGER"},
+            {"name": "originalPrice", "type": "integer", "description": "クーポン適用前価格", "bq_type": "INTEGER"},
+            {"name": "releaseDate", "type": "string", "description": "発売日", "bq_type": "STRING"},
+            {"name": "leadTimeText", "type": "string", "description": "発送目安文言", "bq_type": "STRING"},
+            {"name": "leadTimeStart", "type": "string", "description": "発送開始日", "bq_type": "STRING"},
+            {"name": "leadTimeEnd", "type": "string", "description": "発送終了日", "bq_type": "STRING"},
+            {"name": "isUsed", "type": "boolean", "description": "中古品フラグ", "bq_type": "BOOLEAN"},
+            {"name": "imageId", "type": "string", "description": "商品画像ID", "bq_type": "STRING"},
+            # ── 定期購入 ──
+            {"name": "isSubscription", "type": "boolean", "description": "定期購入注文フラグ", "bq_type": "BOOLEAN"},
+            {"name": "subscriptionId", "type": "string", "description": "定期購入親ID", "bq_type": "STRING"},
+            {"name": "subscriptionContinueCount", "type": "integer", "description": "定期購入継続回数", "bq_type": "INTEGER"},
+            # ── セラー ──
+            {"name": "sellerId", "type": "string", "description": "出店者（ストア）ID", "bq_type": "STRING"},
         ],
     },
 }
@@ -155,9 +275,15 @@ def _build_order_list_xml(
         date_str = end_date.replace("-", "") + "235959"
         condition_xml += f"      <OrderTimeTo>{date_str}</OrderTimeTo>\n"
 
-    # Default condition: if no dates specified, search last 30 days
+    # Default condition: if no dates specified, search last 90 days
     if not condition_xml:
-        condition_xml = "      <IsActive>true</IsActive>\n"
+        from datetime import datetime, timedelta
+        default_from = (datetime.now() - timedelta(days=90)).strftime("%Y%m%d000000")
+        default_to = datetime.now().strftime("%Y%m%d235959")
+        condition_xml = (
+            f"      <OrderTimeFrom>{default_from}</OrderTimeFrom>\n"
+            f"      <OrderTimeTo>{default_to}</OrderTimeTo>\n"
+        )
 
     return (
         "<Req>\n"
@@ -186,13 +312,25 @@ def _parse_xml_orders(xml_text: str) -> list[dict[str, Any]]:
 
     orders: list[dict[str, Any]] = []
 
-    for order_el in root.iter(f"{ns}Order"):
+    # Yahoo orderList API wraps each order in <OrderInfo>
+    for order_el in root.iter(f"{ns}OrderInfo"):
         record: dict[str, Any] = {}
+        # OrderInfo may contain nested elements; flatten direct children
         for child in order_el:
             tag = child.tag.replace(ns, "")
             record[tag] = child.text
         if record:
             orders.append(record)
+
+    # Fallback: try <Order> tag if <OrderInfo> yielded nothing
+    if not orders:
+        for order_el in root.iter(f"{ns}Order"):
+            record = {}
+            for child in order_el:
+                tag = child.tag.replace(ns, "")
+                record[tag] = child.text
+            if record:
+                orders.append(record)
 
     return orders
 
@@ -287,15 +425,85 @@ def _flatten_item(raw: dict[str, Any], endpoint_id: str) -> dict[str, Any]:
         }
 
     if endpoint_id == "seller_orders":
-        return {
-            "orderId": raw.get("OrderId") or raw.get("orderId"),
-            "orderTime": raw.get("OrderTime") or raw.get("orderTime"),
-            "orderStatus": raw.get("OrderStatus") or raw.get("orderStatus"),
-            "totalPrice": raw.get("TotalPrice") or raw.get("totalPrice"),
-            "paymentMethod": raw.get("PayMethod") or raw.get("PaymentMethod") or raw.get("paymentMethod"),
-            "shipStatus": raw.get("ShipStatus") or raw.get("shipStatus"),
-            "buyerName": raw.get("BillFirstName") or raw.get("BuyerName") or raw.get("buyerName"),
+        # Map PascalCase API response keys to camelCase schema field names.
+        # raw dict comes from XML parsing with PascalCase tag names.
+        _MAP = {
+            # 注文基本
+            "orderId": "OrderId", "orderTime": "OrderTime",
+            "orderStatus": "OrderStatus", "lastUpdateTime": "LastUpdateTime",
+            "deviceType": "DeviceType", "isActive": "IsActive",
+            "isSplit": "IsSplit", "parentOrderId": "ParentOrderId",
+            "cancelReason": "CancelReason", "cancelReasonDetail": "CancelReasonDetail",
+            "suspect": "Suspect", "buyerComments": "BuyerComments",
+            "notes": "Notes", "isAffiliate": "IsAffiliate",
+            "referer": "Referer", "entryPoint": "EntryPoint",
+            "isYahooAuctionOrder": "IsYahooAuctionOrder",
+            "sendConfirmTime": "SendConfirmTime", "sendPayTime": "SendPayTime",
+            "printSlipTime": "PrintSlipTime", "printDeliveryTime": "PrintDeliveryTime",
+            # 金額
+            "totalPrice": "TotalPrice", "payCharge": "PayCharge",
+            "shipCharge": "ShipCharge", "giftWrapCharge": "GiftWrapCharge",
+            "discount": "Discount", "adjustments": "Adjustments",
+            "settleAmount": "SettleAmount", "usePoint": "UsePoint",
+            "giftCardDiscount": "GiftCardDiscount",
+            "totalCouponDiscount": "TotalCouponDiscount",
+            "totalMallCouponDiscount": "TotalMallCouponDiscount",
+            "refundTotalPrice": "RefundTotalPrice",
+            "settlePayAmount": "SettlePayAmount",
+            "sellerHandlingCharge": "SellerHandlingCharge",
+            "usePaypayPoint": "UsePaypayPoint",
+            # 決済
+            "payStatus": "PayStatus", "settleStatus": "SettleStatus",
+            "payMethod": "PayMethod", "payMethodName": "PayMethodName",
+            "payDate": "PayDate", "cardBrand": "CardBrand",
+            "cardNumberLast4": "CardNumberLast4", "cardPayType": "CardPayType",
+            "cardPayCount": "CardPayCount", "settleId": "SettleId",
+            "needBillSlip": "NeedBillSlip", "needReceipt": "NeedReceipt",
+            # 請求先
+            "billFirstName": "BillFirstName", "billLastName": "BillLastName",
+            "billFirstNameKana": "BillFirstNameKana", "billLastNameKana": "BillLastNameKana",
+            "billZipCode": "BillZipCode", "billPrefecture": "BillPrefecture",
+            "billCity": "BillCity", "billAddress1": "BillAddress1",
+            "billAddress2": "BillAddress2", "billPhoneNumber": "BillPhoneNumber",
+            "billMailAddress": "BillMailAddress",
+            # 配送
+            "shipStatus": "ShipStatus", "shipMethod": "ShipMethod",
+            "shipMethodName": "ShipMethodName", "shipDate": "ShipDate",
+            "arrivalDate": "ArrivalDate", "shipRequestDate": "ShipRequestDate",
+            "shipRequestTime": "ShipRequestTime", "shipNotes": "ShipNotes",
+            "shipCompanyCode": "ShipCompanyCode",
+            "shipInvoiceNumber1": "ShipInvoiceNumber1",
+            "shipInvoiceNumber2": "ShipInvoiceNumber2", "shipUrl": "ShipUrl",
+            "needGiftWrap": "NeedGiftWrap", "giftWrapType": "GiftWrapType",
+            "giftWrapMessage": "GiftWrapMessage",
+            "needGiftWrapPaper": "NeedGiftWrapPaper",
+            "giftWrapPaperType": "GiftWrapPaperType", "giftWrapName": "GiftWrapName",
+            "excellentDelivery": "ExcellentDelivery", "isEazy": "IsEazy",
+            "isMultiShip": "IsMultiShip", "numberUnitsShipped": "NumberUnitsShipped",
+            # お届け先
+            "shipFirstName": "ShipFirstName", "shipLastName": "ShipLastName",
+            "shipFirstNameKana": "ShipFirstNameKana", "shipLastNameKana": "ShipLastNameKana",
+            "shipZipCode": "ShipZipCode", "shipPrefecture": "ShipPrefecture",
+            "shipCity": "ShipCity", "shipAddress1": "ShipAddress1",
+            "shipAddress2": "ShipAddress2", "shipPhoneNumber": "ShipPhoneNumber",
+            # 商品明細
+            "lineId": "LineId", "itemId": "ItemId", "title": "Title",
+            "subCode": "SubCode", "subCodeOption": "SubCodeOption",
+            "itemTaxRatio": "ItemTaxRatio", "unitPrice": "UnitPrice",
+            "quantity": "Quantity", "jan": "Jan", "productId": "ProductId",
+            "categoryId": "CategoryId", "pointRatioY": "PointRatioY",
+            "pointRatioSeller": "PointRatioSeller", "unitGetPoint": "UnitGetPoint",
+            "couponDiscount": "CouponDiscount", "couponUseNum": "CouponUseNum",
+            "originalPrice": "OriginalPrice", "releaseDate": "ReleaseDate",
+            "leadTimeText": "LeadTimeText", "leadTimeStart": "LeadTimeStart",
+            "leadTimeEnd": "LeadTimeEnd", "isUsed": "IsUsed", "imageId": "ImageId",
+            # 定期購入
+            "isSubscription": "IsSubscription", "subscriptionId": "SubscriptionId",
+            "subscriptionContinueCount": "SubscriptionContinueCount",
+            # セラー
+            "sellerId": "SellerId",
         }
+        return {camel: raw.get(pascal) for camel, pascal in _MAP.items()}
 
     return raw
 
@@ -311,8 +519,50 @@ class YahooClient(PlatformClient):
 
     # Order fields requested from the orderList API
     _ORDER_FIELDS = [
-        "OrderId", "OrderTime", "OrderStatus", "TotalPrice",
-        "PayMethod", "ShipStatus", "BillFirstName",
+        # 注文基本
+        "OrderId", "OrderTime", "OrderStatus", "LastUpdateTime",
+        "DeviceType", "IsActive", "IsSplit", "ParentOrderId",
+        "CancelReason", "CancelReasonDetail", "Suspect",
+        "BuyerComments", "Notes", "IsAffiliate", "Referer", "EntryPoint",
+        "IsYahooAuctionOrder", "SendConfirmTime", "SendPayTime",
+        "PrintSlipTime", "PrintDeliveryTime",
+        # 金額・明細
+        "TotalPrice", "PayCharge", "ShipCharge", "GiftWrapCharge",
+        "Discount", "Adjustments", "SettleAmount", "UsePoint",
+        "GiftCardDiscount", "TotalCouponDiscount", "TotalMallCouponDiscount",
+        "RefundTotalPrice", "SettlePayAmount", "SellerHandlingCharge",
+        "UsePaypayPoint",
+        # 決済
+        "PayStatus", "SettleStatus", "PayMethod", "PayMethodName",
+        "PayDate", "CardBrand", "CardNumberLast4", "CardPayType",
+        "CardPayCount", "SettleId", "NeedBillSlip", "NeedReceipt",
+        # 請求先
+        "BillFirstName", "BillLastName", "BillFirstNameKana", "BillLastNameKana",
+        "BillZipCode", "BillPrefecture", "BillCity",
+        "BillAddress1", "BillAddress2", "BillPhoneNumber", "BillMailAddress",
+        # 配送
+        "ShipStatus", "ShipMethod", "ShipMethodName",
+        "ShipDate", "ArrivalDate", "ShipRequestDate", "ShipRequestTime",
+        "ShipNotes", "ShipCompanyCode",
+        "ShipInvoiceNumber1", "ShipInvoiceNumber2", "ShipUrl",
+        "NeedGiftWrap", "GiftWrapType", "GiftWrapMessage",
+        "NeedGiftWrapPaper", "GiftWrapPaperType", "GiftWrapName",
+        "ExcellentDelivery", "IsEazy", "IsMultiShip", "NumberUnitsShipped",
+        # お届け先
+        "ShipFirstName", "ShipLastName", "ShipFirstNameKana", "ShipLastNameKana",
+        "ShipZipCode", "ShipPrefecture", "ShipCity",
+        "ShipAddress1", "ShipAddress2", "ShipPhoneNumber",
+        # 商品明細
+        "LineId", "ItemId", "Title", "SubCode", "SubCodeOption",
+        "ItemTaxRatio", "UnitPrice", "Quantity", "Jan", "ProductId",
+        "CategoryId", "PointRatioY", "PointRatioSeller", "UnitGetPoint",
+        "CouponDiscount", "CouponUseNum", "OriginalPrice",
+        "ReleaseDate", "LeadTimeText", "LeadTimeStart", "LeadTimeEnd",
+        "IsUsed", "ImageId",
+        # 定期購入
+        "IsSubscription", "SubscriptionId", "SubscriptionContinueCount",
+        # セラー
+        "SellerId",
     ]
 
     _YAHOO_TOKEN_URL = "https://auth.login.yahoo.co.jp/yconnect/v2/token"
@@ -355,6 +605,13 @@ class YahooClient(PlatformClient):
             )
 
         data = resp.json()
+        logger.info(
+            "Yahoo token response keys=%s, token_type=%s, expires_in=%s, scope=%s",
+            list(data.keys()),
+            data.get("token_type"),
+            data.get("expires_in"),
+            data.get("scope"),
+        )
         self._access_token = data["access_token"]
         # Update in-memory settings so other code sees the new token
         object.__setattr__(settings, "yahoo_access_token", self._access_token)
@@ -462,20 +719,38 @@ class YahooClient(PlatformClient):
         end_date: str | None,
         keyword: str | None,
     ) -> list[dict[str, Any]]:
-        """Run extraction, auto-refreshing the token on 401."""
+        """Run extraction, auto-refreshing the token on 401.
+
+        After refreshing, wait a few seconds for Yahoo token propagation,
+        then retry up to 2 more times with increasing delays.
+        """
+        import asyncio
+
         try:
             return await self._do_extract(
                 endpoint_id=endpoint_id, limit=limit, cursor=cursor,
                 start_date=start_date, end_date=end_date, keyword=keyword,
             )
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 401 and endpoint_id in _SELLER_ENDPOINTS:
-                await self._ensure_valid_token()
+            if e.response.status_code != 401 or endpoint_id not in _SELLER_ENDPOINTS:
+                raise
+
+        # 401: refresh token and retry with backoff
+        await self._ensure_valid_token()
+
+        for attempt, delay in enumerate([3, 5], start=1):
+            await asyncio.sleep(delay)
+            logger.info("Token refresh retry %d (waited %ds)", attempt, delay)
+            try:
                 return await self._do_extract(
                     endpoint_id=endpoint_id, limit=limit, cursor=cursor,
                     start_date=start_date, end_date=end_date, keyword=keyword,
                 )
-            raise
+            except httpx.HTTPStatusError as e2:
+                if e2.response.status_code == 401 and attempt < 2:
+                    logger.warning("Retry %d still 401, waiting longer...", attempt)
+                    continue
+                raise
 
     async def _do_extract(
         self,
@@ -536,7 +811,11 @@ class YahooClient(PlatformClient):
             return resp
 
         response = await retry_on_429(_do_post)
-        return _parse_xml_orders(response.text)
+        logger.debug("orderList response (first 500 chars): %s", response.text[:500])
+        orders = _parse_xml_orders(response.text)
+        if not orders:
+            logger.warning("orderList returned 0 orders. Response: %s", response.text[:1000])
+        return orders
 
     async def _extract_seller_items(
         self,

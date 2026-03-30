@@ -56,6 +56,10 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
 
   const [customLocation, setCustomLocation] = useState(false);
 
+  // Track "new" input mode for dataset/table
+  const [newDataset, setNewDataset] = useState(false);
+  const [newTable, setNewTable] = useState(false);
+
   // Suggestions for project/dataset/table
   const [projects, setProjects] = useState<{ project_id: string; name: string }[]>([]);
   const [datasets, setDatasets] = useState<string[]>([]);
@@ -453,10 +457,19 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
       <div className="space-y-1.5">
         <Label className="text-sm font-medium text-slate-700">データセット</Label>
         <div className="flex gap-2">
-          {datasets.length > 0 ? (
+          {datasets.length > 0 && !newDataset ? (
             <select
               value={config.dataset_id || ""}
-              onChange={(e) => onChange({ ...config, dataset_id: e.target.value, table_id: "" })}
+              onChange={(e) => {
+                if (e.target.value === "__new__") {
+                  setNewDataset(true);
+                  setNewTable(true);
+                  onChange({ ...config, dataset_id: "", table_id: "" });
+                } else {
+                  setNewTable(false);
+                  onChange({ ...config, dataset_id: e.target.value, table_id: "" });
+                }
+              }}
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">データセットを選択...</option>
@@ -466,33 +479,45 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
               <option value="__new__">+ 新規データセット</option>
             </select>
           ) : (
-            <Input
-              value={config.dataset_id}
-              onChange={(e) => onChange({ ...config, dataset_id: e.target.value })}
-              placeholder={loadingDatasets ? "読み込み中..." : "my_dataset"}
-              className="text-sm h-9"
-            />
+            <div className="flex gap-2 w-full">
+              <Input
+                value={config.dataset_id}
+                onChange={(e) => onChange({ ...config, dataset_id: e.target.value })}
+                placeholder={loadingDatasets ? "読み込み中..." : "新しいデータセット名を入力"}
+                className="text-sm h-9"
+                autoFocus={newDataset}
+              />
+              {newDataset && datasets.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  className="text-xs shrink-0"
+                  onClick={() => { setNewDataset(false); onChange({ ...config, dataset_id: "", table_id: "" }); }}
+                >
+                  一覧から選択
+                </Button>
+              )}
+            </div>
           )}
         </div>
-        {config.dataset_id === "__new__" && (
-          <Input
-            value=""
-            onChange={(e) => onChange({ ...config, dataset_id: e.target.value })}
-            placeholder="新しいデータセット名を入力"
-            className="text-sm h-9 mt-1"
-            autoFocus
-          />
-        )}
       </div>
 
       {/* Table ID */}
       <div className="space-y-1.5">
         <Label className="text-sm font-medium text-slate-700">テーブル名</Label>
         <div className="flex gap-2">
-          {tables.length > 0 ? (
+          {tables.length > 0 && !newTable ? (
             <select
               value={config.table_id || ""}
-              onChange={(e) => onChange({ ...config, table_id: e.target.value })}
+              onChange={(e) => {
+                if (e.target.value === "__new__") {
+                  setNewTable(true);
+                  onChange({ ...config, table_id: "" });
+                } else {
+                  onChange({ ...config, table_id: e.target.value });
+                }
+              }}
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <option value="">テーブルを選択...</option>
@@ -502,23 +527,28 @@ export function BigQueryDestination({ config, onChange, availableColumns, isEdit
               <option value="__new__">+ 新規テーブル</option>
             </select>
           ) : (
-            <Input
-              value={config.table_id}
-              onChange={(e) => onChange({ ...config, table_id: e.target.value })}
-              placeholder={loadingTables ? "読み込み中..." : "my_table"}
-              className="text-sm h-9"
-            />
+            <div className="flex gap-2 w-full">
+              <Input
+                value={config.table_id}
+                onChange={(e) => onChange({ ...config, table_id: e.target.value })}
+                placeholder={loadingTables ? "読み込み中..." : "新しいテーブル名を入力"}
+                className="text-sm h-9"
+                autoFocus={newTable}
+              />
+              {newTable && tables.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  type="button"
+                  className="text-xs shrink-0"
+                  onClick={() => { setNewTable(false); onChange({ ...config, table_id: "" }); }}
+                >
+                  一覧から選択
+                </Button>
+              )}
+            </div>
           )}
         </div>
-        {config.table_id === "__new__" && (
-          <Input
-            value=""
-            onChange={(e) => onChange({ ...config, table_id: e.target.value })}
-            placeholder="新しいテーブル名を入力"
-            className="text-sm h-9 mt-1"
-            autoFocus
-          />
-        )}
         <p className="text-xs text-muted-foreground">
           データセットやテーブルが存在しない場合は、初回実行時に自動的に作成されます
         </p>

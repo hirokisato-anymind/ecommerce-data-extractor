@@ -39,8 +39,8 @@ class RateLimiter:
 async def retry_on_429(
     func,
     *args,
-    max_retries: int = 3,
-    base_delay: float = 2.0,
+    max_retries: int = 5,
+    base_delay: float = 3.0,
     **kwargs,
 ):
     """Call an async function with exponential backoff retry on 429/throttle errors.
@@ -80,7 +80,12 @@ async def retry_on_429(
 shopify_limiter = RateLimiter(tokens_per_second=2, max_tokens=4)
 # Rakuten: 1 req/sec, no burst (conservative for RMS API)
 rakuten_limiter = RateLimiter(tokens_per_second=1, max_tokens=1)
-# Amazon SP-API: ~15 req/min = 0.25 req/sec, small burst of 2
-amazon_limiter = RateLimiter(tokens_per_second=0.25, max_tokens=2)
+# Amazon SP-API: endpoint-specific rate limiters
+# getOrders: burst 20, restore 0.0167/s (1/min) — conservative at 0.5/s
+amazon_orders_limiter = RateLimiter(tokens_per_second=0.5, max_tokens=4)
+# getOrderItems: burst 20, restore 2/s — parallel 2 with rate 2/s
+amazon_order_items_limiter = RateLimiter(tokens_per_second=2, max_tokens=10)
+# General SP-API endpoints (catalog, inventory, pricing, etc.)
+amazon_limiter = RateLimiter(tokens_per_second=0.5, max_tokens=4)
 # Yahoo: 1 req/sec, no burst
 yahoo_limiter = RateLimiter(tokens_per_second=1, max_tokens=1)
