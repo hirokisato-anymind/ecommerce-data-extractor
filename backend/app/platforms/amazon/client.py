@@ -135,6 +135,7 @@ ENDPOINT_SCHEMAS: dict[str, dict] = {
             {"name": "MarketplaceName", "type": "string", "description": "マーケットプレイス", "bq_type": "STRING"},
             {"name": "SellerSKU", "type": "string", "description": "出品者SKU", "bq_type": "STRING"},
             {"name": "QuantityShipped", "type": "integer", "description": "出荷数量", "bq_type": "INTEGER"},
+            {"name": "ItemIndex", "type": "integer", "description": "明細行番号 (注文内の商品インデックス)", "bq_type": "INTEGER"},
             # 売上
             {"name": "Principal", "type": "number", "description": "商品売上", "bq_type": "FLOAT"},
             {"name": "Tax", "type": "number", "description": "商品税額", "bq_type": "FLOAT"},
@@ -480,13 +481,14 @@ def _flatten_finance_event(event: dict[str, Any], event_type: str = "Shipment") 
     posted = event.get("PostedDate")
     marketplace = event.get("MarketplaceName")
 
-    for item in event.get("ShipmentItemList", []):
+    for idx, item in enumerate(event.get("ShipmentItemList", [])):
         row: dict[str, Any] = {
             "AmazonOrderId": order_id,
             "PostedDate": posted,
             "MarketplaceName": marketplace,
             "SellerSKU": item.get("SellerSKU"),
             "QuantityShipped": item.get("QuantityShipped"),
+            "ItemIndex": idx,
             "EventType": event_type,
         }
 
