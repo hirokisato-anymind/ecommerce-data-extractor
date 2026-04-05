@@ -796,11 +796,6 @@ class YahooClient(PlatformClient):
         """Extract orders via POST + XML body."""
         url = _ENDPOINT_URLS["seller_orders"]
         start = int(cursor) if cursor else 1
-        headers = {
-            "Authorization": f"Bearer {self._access_token}",
-            "Content-Type": "application/xml; charset=utf-8",
-        }
-
         xml_body = _build_order_list_xml(
             seller_id=self._seller_id,
             fields=self._ORDER_FIELDS,
@@ -813,6 +808,10 @@ class YahooClient(PlatformClient):
         logger.info("orderList request XML:\n%s", xml_body)
 
         async def _do_post():
+            headers = {
+                "Authorization": f"Bearer {self._access_token}",
+                "Content-Type": "application/xml; charset=utf-8",
+            }
             resp = await self._http.post(
                 url, content=xml_body, headers=headers,
             )
@@ -859,7 +858,7 @@ class YahooClient(PlatformClient):
         if not orders:
             return []
 
-        order_ids = [o.get("OrderId") for o in orders if o.get("OrderId")]
+        order_ids = list(dict.fromkeys(o.get("OrderId") for o in orders if o.get("OrderId")))
         logger.info("orderInfo: %d件の注文の明細を取得します", len(order_ids))
 
         # Step 2: 各注文に対して orderInfo を呼び出す (レートリミット遵守)
@@ -879,12 +878,11 @@ class YahooClient(PlatformClient):
                 f"  <SellerId>{self._seller_id}</SellerId>\n"
                 "</Req>"
             )
-            headers = {
-                "Authorization": f"Bearer {self._access_token}",
-                "Content-Type": "application/xml; charset=utf-8",
-            }
-
             async def _do_post(body=xml_body):
+                headers = {
+                    "Authorization": f"Bearer {self._access_token}",
+                    "Content-Type": "application/xml; charset=utf-8",
+                }
                 resp = await self._http.post(url, content=body, headers=headers)
                 if resp.status_code >= 400:
                     logger.error(
