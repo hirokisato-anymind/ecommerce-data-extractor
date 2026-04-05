@@ -84,7 +84,7 @@ PLATFORM_KEYS: dict[str, list[dict]] = {
         {"key": "YAHOO_CLIENT_ID", "label": "Client ID (アプリケーションID)", "hint": "Yahoo!デベロッパーネットワークで発行", "secret": False},
         {"key": "YAHOO_CLIENT_SECRET", "label": "Client Secret (シークレット)", "hint": "アプリケーションのシークレット", "secret": True},
         {"key": "YAHOO_SELLER_ID", "label": "ストアアカウント", "hint": "Yahoo!ショッピングのストアアカウントID", "secret": False},
-        {"key": "YAHOO_ACCESS_TOKEN", "label": "Access Token", "hint": "OAuth認証で取得、または手動入力", "secret": True},
+        {"key": "YAHOO_ACCESS_TOKEN", "label": "Access Token", "hint": "OAuth認証で取得、または手動入力", "secret": True, "readonly": True},
     ],
 }
 
