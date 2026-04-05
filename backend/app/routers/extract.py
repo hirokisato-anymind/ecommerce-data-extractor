@@ -16,7 +16,7 @@ async def extract_data(
     platform_id: str = Query(..., description="Platform ID"),
     endpoint_id: str = Query(..., description="Endpoint ID"),
     columns: str | None = Query(None, description="Comma-separated column names"),
-    limit: int = Query(100, ge=1, le=50000, description="Number of records"),
+    limit: int = Query(100, ge=0, description="Number of records (0=unlimited)"),
     cursor: str | None = Query(None, description="Pagination cursor"),
     filters: str | None = Query(None, description="JSON array of filter definitions"),
     keyword: str | None = Query(None, description="Search keyword (used by Yahoo ItemSearch etc.)"),
@@ -53,6 +53,8 @@ async def extract_data(
                 start_date = (datetime.now(timezone.utc) - timedelta(days=n_days)).strftime("%Y-%m-%d")
                 break
 
+    effective_limit = float('inf') if limit == 0 else limit
+
     try:
         if fetch_all:
             # Paginate through all pages up to the requested limit
@@ -60,8 +62,8 @@ async def extract_data(
             current_cursor = cursor
             result_meta: dict = {}
 
-            while len(all_items) < limit:
-                page_limit = min(limit - len(all_items), 100)
+            while len(all_items) < effective_limit:
+                page_limit = min(int(effective_limit - len(all_items)), 100)
                 result = await client.extract_data(
                     endpoint_id=endpoint_id,
                     columns=column_list,
@@ -80,8 +82,8 @@ async def extract_data(
                 current_cursor = next_cursor
                 # Rate limiting is handled by per-platform rate limiters
 
-            result_meta["items"] = all_items[:limit]
-            result_meta["next_cursor"] = None if len(all_items) <= limit else result_meta.get("next_cursor")
+            result_meta["items"] = all_items[:int(effective_limit)] if effective_limit != float('inf') else all_items
+            result_meta["next_cursor"] = None if len(all_items) <= effective_limit else result_meta.get("next_cursor")
             result = result_meta
         else:
             result = await client.extract_data(

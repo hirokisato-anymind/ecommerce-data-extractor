@@ -14,6 +14,7 @@ import { BigQueryDestination } from "@/components/BigQueryDestination";
 import { StatusBar } from "@/components/StatusBar";
 import { FilterSettings } from "@/components/FilterSettings";
 import { ScheduleSettings } from "@/components/ScheduleSettings";
+import { RecordLimitControl } from "@/components/RecordLimitControl";
 import { CredentialsDialog } from "@/components/CredentialsDialog";
 import { JobList } from "@/components/JobList";
 import { NotificationSettings } from "@/components/NotificationSettings";
@@ -122,6 +123,7 @@ function Dashboard() {
   );
   const [selectedColumns, setSelectedColumns] = useState<Set<string>>(new Set());
   const [limit, setLimit] = useState(100);
+  const [scheduleLimit, setScheduleLimit] = useState(0);
   const [data, setData] = useState<ExtractResult | null>(null);
   const [configPlatform, setConfigPlatform] = useState<Platform | null>(null);
   const [filters, setFilters] = useState<FilterConfig[]>([]);
@@ -268,7 +270,7 @@ function Dashboard() {
         columns: selectedColumns.size > 0 ? Array.from(selectedColumns) : [],
         filters,
         keyword: keyword || undefined,
-        limit: 10000,
+        limit: scheduleLimit,
         schedule_config: scheduleConfig,
         destination,
         enabled: scheduleEnabled,
@@ -313,7 +315,7 @@ function Dashboard() {
     setSelectedColumns(new Set(job.columns ?? []));
     setFilters(job.filters ?? []);
     setKeyword(job.keyword ?? "");
-    setLimit(job.limit);
+    setScheduleLimit(job.limit);
     setDestination(job.destination);
     setScheduleConfig(job.schedule_config);
     setScheduleEnabled(job.enabled);
@@ -676,6 +678,9 @@ function Dashboard() {
                     onConfigChange={setScheduleConfig}
                     onEnabledChange={setScheduleEnabled}
                   />
+                  <div className="mt-4">
+                    <RecordLimitControl value={scheduleLimit} onChange={setScheduleLimit} />
+                  </div>
                 </CardContent>
               </Card>
 
@@ -979,6 +984,9 @@ function Dashboard() {
                         onConfigChange={setScheduleConfig}
                         onEnabledChange={setScheduleEnabled}
                       />
+                      <div className="mt-4">
+                        <RecordLimitControl value={scheduleLimit} onChange={setScheduleLimit} />
+                      </div>
                     </CardContent>
                   </Card>
 

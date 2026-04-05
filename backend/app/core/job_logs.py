@@ -81,9 +81,9 @@ def add_log(schedule_id: str, message: str, level: str = "info") -> None:
     with _lock:
         entries = _load_entries(schedule_id)
         entries.append(entry)
-        # Cap at 500 entries
-        if len(entries) > 500:
-            entries = entries[-500:]
+        # Cap at 2000 entries
+        if len(entries) > 2000:
+            entries = entries[-2000:]
         _save_entries(schedule_id, entries)
 
 

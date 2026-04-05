@@ -91,9 +91,9 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
     # API制限・実行方針をログに記載
     _API_POLICY: dict[str, str] = {
         "amazon": "Amazon SP-API: Orders=Reports API一括取得 (レポート生成→ダウンロード), Finances=0.5req/s | リトライ: 最大5回 指数バックオフ",
-        "shopify": "Shopify Admin API: 2req/s burst4 | GraphQL コストベース制御 | 上限10,000件/回",
-        "rakuten": "楽天RMS API: 1req/s | searchOrder最大1,000件/ページ → getOrder100件/バッチ | 上限10,000件/回",
-        "yahoo": "Yahoo Shopping API: 1req/s | 上限10,000件/回",
+        "shopify": "Shopify Admin API: 2req/s burst4 | GraphQL コストベース制御",
+        "rakuten": "楽天RMS API: 1req/s | searchOrder最大1,000件/ページ → getOrder100件/バッチ",
+        "yahoo": "Yahoo Shopping API: 1req/s",
     }
     if platform_id in _API_POLICY:
         add_log(schedule_id, f"API制限: {_API_POLICY[platform_id]}")
@@ -196,13 +196,95 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
             # columns is None or empty [] → fetch all columns
             fetch_columns = None
 
-        # Paginate through all pages up to limit
-        add_log(schedule_id, f"データ取得開始 (上限: {limit}件)")
-        all_items: list[dict] = []
+        # --- チャンク単位でのデータ取得 + BQ書き込み ---
+        CHUNK_SIZE = 10_000
+        unlimited = (limit == 0)
+        effective_limit = float('inf') if unlimited else limit
+
+        transfer_mode = TransferMode(destination.get("transfer_mode", "append"))
+        key_columns_bq = destination.get("key_columns") or None
+        table_name = f"{destination['project_id']}.{destination['dataset_id']}.{destination['table_id']}"
+
+        add_log(schedule_id, f"データ取得開始 (上限: {'無制限' if unlimited else f'{limit}件'})")
+        add_log(schedule_id, f"BQ書き込み先: {table_name} (モード: {transfer_mode.value}, チャンクサイズ: {CHUNK_SIZE}件)")
+
+        # delete_in_advance: ループ前にテーブル全行削除
+        if transfer_mode == TransferMode.DELETE_IN_ADVANCE:
+            from app.core.bigquery import delete_all_rows
+            add_log(schedule_id, "delete_in_advance: 既存データを一括削除中...")
+            delete_all_rows(
+                project_id=destination["project_id"],
+                dataset_id=destination["dataset_id"],
+                table_id=destination["table_id"],
+                location=destination.get("location", "US"),
+            )
+            add_log(schedule_id, "delete_in_advance: 削除完了")
+
+        chunk_buffer: list[dict] = []
+        total_fetched = 0
+        total_written = 0
+        chunk_num = 0
+        is_first_chunk = True
+        new_synced_at: str | None = None
         current_cursor = None
         page_num = 0
-        while len(all_items) < limit:
-            page_limit = min(limit - len(all_items), 1000)
+        filter_objs = [FilterDefinition(**f) for f in filters_def] if filters_def else None
+
+        # フィルター適用後、ユーザー選択カラムのみに絞り込むための追加カラム
+        extra_columns = (sync_columns - set(columns)) if columns else set()
+
+        async def _flush_chunk(buffer: list[dict], *, first: bool) -> int:
+            """バッファをフィルター→カラム絞り込み→BQ書き込みし、書き込み件数を返す。"""
+            items = buffer
+
+            # フィルター適用
+            if filter_objs:
+                before = len(items)
+                items = apply_filters(items, filter_objs)
+                if before != len(items):
+                    add_log(schedule_id, f"  フィルター適用: {before}件 → {len(items)}件")
+
+            # ユーザー選択カラム以外を除外
+            if columns and extra_columns:
+                items = [
+                    {k: v for k, v in item.items() if k not in extra_columns}
+                    for item in items
+                ]
+
+            if not items:
+                return 0
+
+            # 転送モード決定
+            if first:
+                chunk_mode = transfer_mode
+            else:
+                # 2回目以降: replace/delete_in_advance は append_direct に切り替え
+                if transfer_mode in (TransferMode.REPLACE, TransferMode.DELETE_IN_ADVANCE):
+                    chunk_mode = TransferMode.APPEND_DIRECT
+                else:
+                    chunk_mode = transfer_mode
+
+            # delete_in_advance は事前削除済みなので append_direct で書き込み
+            if transfer_mode == TransferMode.DELETE_IN_ADVANCE:
+                chunk_mode = TransferMode.APPEND_DIRECT
+
+            bq_result = await write_to_bigquery(
+                project_id=destination["project_id"],
+                dataset_id=destination["dataset_id"],
+                table_id=destination["table_id"],
+                rows=items,
+                mode=chunk_mode,
+                key_columns=key_columns_bq,
+                location=destination.get("location", "US"),
+                platform_id=platform_id,
+                endpoint_id=endpoint_id,
+            )
+            return bq_result["rows_written"]
+
+        # ページネーションループ
+        while total_fetched < effective_limit:
+            remaining = effective_limit - total_fetched
+            page_limit = min(int(remaining), 1000) if remaining != float('inf') else 1000
             result = await client.extract_data(
                 endpoint_id=endpoint_id,
                 columns=fetch_columns,
@@ -213,80 +295,70 @@ async def _execute_scheduled_job(schedule_data: dict) -> None:
                 end_date=end_date,
             )
             page_items = result.get("items", [])
-            all_items.extend(page_items)
+            chunk_buffer.extend(page_items)
+            total_fetched += len(page_items)
             page_num += 1
-            add_log(schedule_id, f"ページ {page_num} 取得完了: {len(page_items)}件 (合計: {len(all_items)}件)")
 
-            next_cursor = result.get("next_cursor")
-            if not next_cursor or not page_items:
-                break
-            current_cursor = next_cursor
-            # Rate limiting is handled by per-platform rate limiters
-
-        items = all_items[:limit]
-        add_log(schedule_id, f"データ取得完了: {len(items)}件")
-
-        # フィルター適用
-        if filters_def:
-            filter_objs = [FilterDefinition(**f) for f in filters_def]
-            before_count = len(items)
-            items = apply_filters(items, filter_objs)
-            add_log(schedule_id, f"フィルター適用: {before_count}件 → {len(items)}件")
-
-        # Extract the latest updatedAt BEFORE stripping extra columns
-        new_synced_at = None
-        if items:
-            if platform_id == "rakuten":
-                # 楽天には「最終更新日時」カラムがないため、実行時刻を使用
-                new_synced_at = datetime.now(timezone.utc).isoformat()
-            else:
+            # new_synced_at をフィルター前の生データから追跡
+            if page_items and platform_id != "rakuten":
                 for date_key in ("updatedAt", "updated_at", "LastUpdateDate"):
-                    dates = [item.get(date_key) for item in items if item.get(date_key)]
+                    dates = [item.get(date_key) for item in page_items if item.get(date_key)]
                     if dates:
-                        new_synced_at = max(dates)
+                        page_max = max(dates)
+                        if new_synced_at is None or page_max > new_synced_at:
+                            new_synced_at = page_max
                         break
 
-        # フィルター適用後、ユーザー選択カラムのみに絞り込む（追加取得カラムを除外）
-        if columns:
-            extra_columns = sync_columns - set(columns)
-            if extra_columns:
-                items = [
-                    {k: v for k, v in item.items() if k not in extra_columns}
-                    for item in items
-                ]
+            # ログ出力（10ページごと、または最終ページ）
+            next_cursor = result.get("next_cursor")
+            is_last_page = not next_cursor or not page_items
+            if page_num % 10 == 0 or is_last_page:
+                add_log(schedule_id, f"ページ {page_num} 取得完了 (合計: {total_fetched}件)")
 
-        # BigQueryにデータを書き込み
-        transfer_mode = TransferMode(destination.get("transfer_mode", "append"))
-        key_columns = destination.get("key_columns") or None
+            # チャンクサイズに達したらフラッシュ
+            if len(chunk_buffer) >= CHUNK_SIZE:
+                chunk_num += 1
+                add_log(schedule_id, f"チャンク {chunk_num} BQ書き込み中... ({len(chunk_buffer)}件)")
+                written = await _flush_chunk(chunk_buffer, first=is_first_chunk)
+                total_written += written
+                add_log(schedule_id, f"チャンク {chunk_num} 完了: {written}件書き込み (累計: {total_written}件)")
+                chunk_buffer = []
+                is_first_chunk = False
 
-        table_name = f"{destination['project_id']}.{destination['dataset_id']}.{destination['table_id']}"
-        add_log(schedule_id, f"BigQuery書き込み開始: {table_name} (モード: {transfer_mode.value}, {len(items)}件)")
+            if is_last_page:
+                break
+            current_cursor = next_cursor
 
-        bq_result = await write_to_bigquery(
-            project_id=destination["project_id"],
-            dataset_id=destination["dataset_id"],
-            table_id=destination["table_id"],
-            rows=items,
-            mode=transfer_mode,
-            key_columns=key_columns,
-            location=destination.get("location", "US"),
-            platform_id=platform_id,
-            endpoint_id=endpoint_id,
-        )
+        # 残りバッファをフラッシュ
+        if chunk_buffer:
+            chunk_num += 1
+            add_log(schedule_id, f"チャンク {chunk_num} BQ書き込み中... ({len(chunk_buffer)}件)")
+            written = await _flush_chunk(chunk_buffer, first=is_first_chunk)
+            total_written += written
+            add_log(schedule_id, f"チャンク {chunk_num} 完了: {written}件書き込み (累計: {total_written}件)")
 
+        # 楽天は updatedAt がないため実行時刻を使用
+        if total_fetched > 0 and platform_id == "rakuten":
+            new_synced_at = datetime.now(timezone.utc).isoformat()
+
+        add_log(schedule_id, f"完了: 取得{total_fetched}件, BQ書き込み{total_written}件")
         status_msg = (
-            f"成功: {bq_result['rows_written']}行を{bq_result['table']}に"
-            f"書き込み (モード: {bq_result['mode']})"
+            f"成功: {total_written}行を{table_name}に"
+            f"書き込み (モード: {transfer_mode.value})"
         )
-        add_log(schedule_id, f"完了: {bq_result['rows_written']}行を書き込み")
         logger.info(
             "スケジュールジョブ %s 完了: %d件をBigQueryに書き込み",
             schedule_id,
-            bq_result["rows_written"],
+            total_written,
         )
         _update_schedule_run_status(schedule_id, status_msg, last_synced_at=new_synced_at)
 
     except Exception as e:
-        add_log(schedule_id, f"エラー: {e}", level="error")
+        written_info = ""
+        try:
+            written_info = f" ({total_written}件書き込み済み)" if total_written > 0 else ""
+        except NameError:
+            pass
+        add_log(schedule_id, f"エラー{written_info}: {e}", level="error")
         logger.exception("スケジュールジョブ %s 失敗: %s", schedule_id, e)
-        _update_schedule_run_status(schedule_id, f"エラー: {e}")
+        _update_schedule_run_status(schedule_id, f"エラー{written_info}: {e}")

@@ -208,6 +208,23 @@ def _ensure_table_exists(
     return client.get_table(table_ref)
 
 
+def delete_all_rows(
+    project_id: str,
+    dataset_id: str,
+    table_id: str,
+    location: str = "US",
+) -> None:
+    """テーブルの全行を削除する（スキーマは保持）。テーブルが存在しない場合はスキップ。"""
+    client = _get_client(project_id, location=location)
+    table_ref = f"{project_id}.{dataset_id}.{table_id}"
+    try:
+        client.get_table(table_ref)
+        client.query(f"DELETE FROM `{table_ref}` WHERE TRUE").result()
+        logger.info("テーブル %s の全行を削除しました", table_ref)
+    except NotFound:
+        logger.info("テーブル %s は存在しないためスキップ", table_ref)
+
+
 async def write_to_bigquery(
     project_id: str,
     dataset_id: str,

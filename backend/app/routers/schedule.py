@@ -74,7 +74,7 @@ class ScheduleCreate(BaseModel):
     endpoint_id: str
     columns: list[str] | None = None
     filters: list[dict] | None = None
-    limit: int = Field(10000, ge=1, le=50000)
+    limit: int = Field(10000, ge=0)
     destination: DestinationConfig
     schedule_config: ScheduleConfig
     enabled: bool = True
@@ -86,7 +86,7 @@ class ScheduleUpdate(BaseModel):
     endpoint_id: str | None = None
     columns: list[str] | None = None
     filters: list[dict] | None = None
-    limit: int | None = Field(None, ge=1, le=50000)
+    limit: int | None = Field(None, ge=0)
     destination: DestinationConfig | None = None
     schedule_config: ScheduleConfig | None = None
     enabled: bool | None = None
