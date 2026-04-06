@@ -57,7 +57,7 @@ query Products($limit: Int!, $cursor: String, $query: String) {
 """,
     "orders": """
 query Orders($limit: Int!, $cursor: String, $query: String) {
-  orders(first: $limit, after: $cursor, query: $query, sortKey: CREATED_AT, reverse: true) {
+  orders(first: $limit, after: $cursor, query: $query, sortKey: CREATED_AT) {
     edges {
       node {
         id
