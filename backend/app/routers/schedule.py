@@ -90,6 +90,7 @@ class ScheduleUpdate(BaseModel):
     destination: DestinationConfig | None = None
     schedule_config: ScheduleConfig | None = None
     enabled: bool | None = None
+    last_synced_at: str | None = None  # "reset" で null にリセット可能
 
 
 class Schedule(BaseModel):
