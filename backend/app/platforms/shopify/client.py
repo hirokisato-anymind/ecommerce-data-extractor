@@ -593,9 +593,14 @@ class ShopifyClient(PlatformClient):
 
         # Build Shopify query string for date range filtering
         # Use updated_at for incremental sync (catches both new and modified records)
+        # Without any date filter, Shopify only returns ~60 days of orders.
+        # For full backfill (no start_date), use created_at:>=1970-01-01 to fetch all.
         query_parts: list[str] = []
         if start_date:
             query_parts.append(f"updated_at:>={start_date}")
+        elif endpoint_id == "orders":
+            # Ensure all historical orders are returned
+            query_parts.append("created_at:>=2000-01-01")
         if end_date:
             query_parts.append(f"updated_at:<={end_date}")
         if query_parts:
