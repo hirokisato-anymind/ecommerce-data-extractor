@@ -866,12 +866,12 @@ class AmazonClient(PlatformClient):
         import gzip
         import io
 
-        # 日付範囲
+        # 日付範囲 (start_dateなしの場合はデフォルト2年前まで遡る)
         if start_date:
             data_start = f"{start_date}T00:00:00Z"
         else:
             data_start = (
-                datetime.now(timezone.utc) - timedelta(days=30)
+                datetime.now(timezone.utc) - timedelta(days=730)
             ).strftime("%Y-%m-%dT%H:%M:%SZ")
         data_end = f"{end_date}T23:59:59Z" if end_date else datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
