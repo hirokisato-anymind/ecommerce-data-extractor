@@ -161,7 +161,7 @@ query Orders($limit: Int!, $cursor: String, $query: String) {
 """,
     "customers": """
 query Customers($limit: Int!, $cursor: String, $query: String) {
-  customers(first: $limit, after: $cursor, query: $query, sortKey: CREATED_AT, reverse: true) {
+  customers(first: $limit, after: $cursor, query: $query, sortKey: CREATED_AT) {
     edges {
       node {
         id
